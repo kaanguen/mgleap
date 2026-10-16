@@ -46,13 +46,11 @@ public class MarkerManager : MonoBehaviour
 
     private void Start()
     {
-        // 1. In-Headset HUD automatisch erzeugen, falls aktiviert und kein eigenes Textfeld zugewiesen ist
         if (enableInHeadsetHUD && customTMPText == null && customUIText == null)
         {
             CreateInHeadsetHUD();
         }
 
-        // 2. OpenXR Initialisierung prüfen
         if (OpenXRSettings.Instance == null)
         {
             _errorMessage = "OpenXRSettings.Instance ist null! OpenXR ist nicht aktiv.";
@@ -73,12 +71,11 @@ public class MarkerManager : MonoBehaviour
             return;
         }
 
-        // 3. Detektor-Einstellungen konfigurieren
         MarkerDetectorSettings settings = new MarkerDetectorSettings
         {
             MarkerDetectorProfile = MarkerDetectorProfile.Default,
             MarkerType = markerType,
-x            
+           
         };
 
         if (markerType == MarkerType.Aruco)
@@ -90,8 +87,8 @@ x
         else if (markerType == MarkerType.AprilTag)
         {
             settings.AprilTagSettings.AprilTagType = aprilTagDictionary;
-            //settings.AprilTagSettings.AprilTagLength = markerSizeMeters;
-            settings.AprilTagSettings.EstimateAprilTagLength = true;
+            settings.AprilTagSettings.AprilTagLength = markerSizeMeters;
+            settings.AprilTagSettings.EstimateAprilTagLength = false;
         }
         else if (markerType == MarkerType.QR)
         {
@@ -126,7 +123,6 @@ x
 
         bool isDetected = false;
 
-        // Prüfen, ob der Detektor aktuell mindestens einen Marker im Blickfeld sieht
         if (_markerDetector.Data != null && _markerDetector.Data.Count > 0)
         {
             var markerData = _markerDetector.Data[0];
@@ -137,30 +133,16 @@ x
                 _lastDetectionTime = Time.time;
                 Pose pose = markerData.MarkerPose.Value;
 
-                // 3D-Objekt spawnen oder aktualisieren
                 if (_spawnedCube == null)
                 {
-                    if (customPrefab != null)
-                    {
                         _spawnedCube = Instantiate(customPrefab);
-                    }
-                    else
-                    {
-                        _spawnedCube = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                        _spawnedCube.transform.localScale = Vector3.one * cubeSize;
-                        Renderer r = _spawnedCube.GetComponent<Renderer>();
-                        if (r != null)
-                        {
-                            r.material.color = Color.red;
-                        }
-                    }
+                
                 }
 
                 _spawnedCube.SetActive(true);
                 _spawnedCube.transform.position = pose.position;
                 _spawnedCube.transform.rotation = pose.rotation;
 
-                // Daten für Debugger zusammenstellen
                 string idOrContent;
                 if (markerType == MarkerType.QR)
                 {
@@ -283,21 +265,21 @@ x
         _hudRoot = new GameObject("ML2_MarkerDebugHUD");
 
         // Hintergrund-Panel (Quad) für bessere Lesbarkeit in jeder Umgebung
-        GameObject bg = GameObject.CreatePrimitive(PrimitiveType.Quad);
-        bg.name = "Background";
-        bg.transform.SetParent(_hudRoot.transform, false);
-        bg.transform.localPosition = new Vector3(0.18f, -0.09f, 0.005f);
-        bg.transform.localScale = new Vector3(0.42f, 0.24f, 1f);
-        Destroy(bg.GetComponent<Collider>());
+        // GameObject bg = GameObject.CreatePrimitive(PrimitiveType.Quad);
+        // bg.name = "Background";
+        // bg.transform.SetParent(_hudRoot.transform, false);
+        // bg.transform.localPosition = new Vector3(0.18f, -0.09f, 0.005f);
+        // bg.transform.localScale = new Vector3(0.42f, 0.24f, 1f);
+        // Destroy(bg.GetComponent<Collider>());
 
-        var bgRenderer = bg.GetComponent<MeshRenderer>();
-        Shader unlitShader = Shader.Find("Sprites/Default") ?? Shader.Find("Unlit/Color");
-        if (unlitShader != null)
-        {
-            Material bgMat = new Material(unlitShader);
-            bgMat.color = new Color(0.08f, 0.08f, 0.12f, 0.85f);
-            bgRenderer.material = bgMat;
-        }
+        // var bgRenderer = bg.GetComponent<MeshRenderer>();
+        // Shader unlitShader = Shader.Find("Sprites/Default") ?? Shader.Find("Unlit/Color");
+        // if (unlitShader != null)
+        // {
+        //     Material bgMat = new Material(unlitShader);
+        //     bgMat.color = new Color(0.08f, 0.08f, 0.12f, 0.85f);
+        //     bgRenderer.material = bgMat;
+        // }
 
         // 3D TextMesh für das schwebende Display
         GameObject textObj = new GameObject("Text");
