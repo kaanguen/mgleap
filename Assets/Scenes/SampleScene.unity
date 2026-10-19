@@ -131,50 +131,14 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 509400127}
-  - component: {fileID: 509400126}
-  - component: {fileID: 509400131}
-  - component: {fileID: 509400130}
-  - component: {fileID: 509400129}
   - component: {fileID: 509400128}
   m_Layer: 0
-  m_Name: MarkerManager
+  m_Name: MarkerAndAnchorManager
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &509400126
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 509400125}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 52fbf17998b944224b8fc1dcc0973ac3, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  anchorManager: {fileID: 0}
-  _xrOrigin: {fileID: 0}
-  markerType: 1
-  markerSizeMeters: 0.1
-  aprilTagDictionary: 3
-  customPrefab: {fileID: 919132149155446097, guid: dd4ab6d28ddf244a6a40ba555579a730, type: 3}
-  cubeSize: 0.05
-  hideObjectWhenLost: 0
-  enableInHeadsetHUD: 1
-  enableOnGUI: 1
-  customTMPText: {fileID: 0}
-  customUIText: {fileID: 0}
-  _markerFeature: {fileID: 0}
-  _spawnedCube: {fileID: 0}
-  _hudRoot: {fileID: 0}
-  _debugTextMesh: {fileID: 0}
-  _debugString: 
-  _errorMessage: 
-  _lastDetectedInfo: Keine Daten
-  _lastDetectionTime: -1
 --- !u!4 &509400127
 Transform:
   m_ObjectHideFlags: 0
@@ -199,65 +163,16 @@ MonoBehaviour:
   m_GameObject: {fileID: 509400125}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: cac3b6a6c17c844ec9a161930e96f991, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  _tracker: {fileID: 509400130}
-  _anchorManager: {fileID: 509400129}
-  _tmpText: {fileID: 0}
-  _uiText: {fileID: 0}
-  enableHeadsetHUD: 0
-  enableOnGUI: 0
---- !u!114 &509400129
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 509400125}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: df5254ed984a64c159a7dff7251c1c7a, type: 3}
+  m_Script: {fileID: 11500000, guid: 6f6f5d5e5a6d4f4b9c8a7e6d5c4b3a21, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
   _xrOrigin: {fileID: 782628378}
+  _anchorManager: {fileID: 782628380}
   _markerPrefab: {fileID: 919132149155446097, guid: dd4ab6d28ddf244a6a40ba555579a730, type: 3}
-  _faceCameraYOnly: 1
-  _rotationOffset: {x: 0, y: 0, z: 0}
-  _markerSurfaceOffset: 0.01
---- !u!114 &509400130
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 509400125}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 549c0bd4c586b40a79e772c34f48fe50, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  markerType: 1
-  markerSizeMeters: 0.1
-  aprilTagDictionary: 3
-  detectorProfile: 0
---- !u!114 &509400131
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 509400125}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: e0cb9aa70a22847b5925ee5f067c10a9, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  m_Camera: {fileID: 0}
-  m_OriginBaseGameObject: {fileID: 509400125}
-  m_CameraFloorOffsetObject: {fileID: 0}
-  m_RequestedTrackingOriginMode: 0
-  m_CameraYOffset: 1.1176
+  _aprilTagType: 3
+  _aprilTagLength: 0.1
+  _detectorProfile: 0
+  _maxReprojectionErrorMeters: 0.02
 --- !u!1 &705507993
 GameObject:
   m_ObjectHideFlags: 0
