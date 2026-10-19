@@ -168,11 +168,12 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   _xrOrigin: {fileID: 782628378}
   _anchorManager: {fileID: 782628380}
-  _markerPrefab: {fileID: 919132149155446097, guid: dd4ab6d28ddf244a6a40ba555579a730, type: 3}
+  _markerPrefab: {fileID: 5476594678983463063, guid: fbf0f6a9bf16d4cb5a8ec34f0c5e42ea, type: 3}
   _aprilTagType: 3
   _aprilTagLength: 0.1
   _detectorProfile: 0
-  _maxReprojectionErrorMeters: 0.02
+  _confidenceCheckIntervalSeconds: 0.5
+  _uprightYawOffsetDegrees: 180
 --- !u!1 &705507993
 GameObject:
   m_ObjectHideFlags: 0

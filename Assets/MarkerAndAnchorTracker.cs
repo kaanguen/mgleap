@@ -17,6 +17,7 @@ public class MarkerAndAnchorTracker : MonoBehaviour
     [SerializeField, Min(0f)] private float _aprilTagLength = 0.1f;
     [SerializeField] private MarkerDetectorProfile _detectorProfile = MarkerDetectorProfile.Default;
     [SerializeField, Min(0.01f)] private float _confidenceCheckIntervalSeconds = 0.5f;
+    [SerializeField] private float _uprightYawOffsetDegrees = 180f;
 
     private MagicLeapMarkerUnderstandingFeature _markerFeature;
     private MarkerDetector _markerDetector;
@@ -117,7 +118,10 @@ public class MarkerAndAnchorTracker : MonoBehaviour
 
             Pose pose = data.MarkerPose.Value;
             Vector3 position = originTransform.TransformPoint(pose.position);
-            Quaternion rotation = originTransform.rotation * pose.rotation;
+            Quaternion rotation = GetUprightMarkerRotation(
+                originTransform,
+                pose.rotation,
+                _uprightYawOffsetDegrees);
             GameObject instance = Instantiate(_markerPrefab, position, rotation);
             ARAnchor anchor = instance.AddComponent<ARAnchor>();
             _anchorsByMarkerId.Add(markerId, new AnchorState
@@ -128,6 +132,31 @@ public class MarkerAndAnchorTracker : MonoBehaviour
             SetRendererVisibility(_anchorsByMarkerId[markerId], false);
             Debug.Log($"[MarkerAndAnchorTracker] Anchor created for marker {markerId}.");
         }
+    }
+
+    private static Quaternion GetUprightMarkerRotation(
+        Transform originTransform,
+        Quaternion markerRotation,
+        float yawOffsetDegrees)
+    {
+        Vector3 markerForward = originTransform.TransformDirection(
+            markerRotation * Vector3.forward);
+        Vector3 uprightForward = Vector3.ProjectOnPlane(markerForward, Vector3.up);
+
+        if (uprightForward.sqrMagnitude < 0.0001f)
+        {
+            Vector3 markerRight = originTransform.TransformDirection(
+                markerRotation * Vector3.right);
+            uprightForward = Vector3.ProjectOnPlane(markerRight, Vector3.up);
+        }
+
+        if (uprightForward.sqrMagnitude < 0.0001f)
+            return Quaternion.identity;
+
+        Quaternion uprightRotation = Quaternion.LookRotation(
+            uprightForward.normalized,
+            Vector3.up);
+        return uprightRotation * Quaternion.Euler(0f, yawOffsetDegrees, 0f);
     }
 
     private void OnDestroy()
