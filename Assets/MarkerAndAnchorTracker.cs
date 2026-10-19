@@ -86,7 +86,7 @@ public class MarkerAndAnchorTracker : MonoBehaviour
             GameObject instance = Instantiate(_markerPrefab, position, rotation);
             instance.AddComponent<ARAnchor>();
             _anchorsByMarkerId.Add(markerId, instance);
-            Debug.Log($"[AprilTagAnchorPlacer] Anchor created for marker {markerId}.");
+            Debug.Log($"[MarkerAndAnchorTracker] Anchor created for marker {markerId}.");
         }
     }
 
@@ -100,7 +100,7 @@ public class MarkerAndAnchorTracker : MonoBehaviour
     {
         if (condition)
             return true;
-        Debug.LogError($"[AprilTagAnchorPlacer] {message}");
+        Debug.LogError($"[MarkerAndAnchorTracker] {message}");
         enabled = false;
         return false;
     }
