@@ -1,42 +1,73 @@
-using System;
+using Unity.XR.CoreUtils;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.XR;
+using UnityEngine.UI;
 using UnityEngine.XR.Interaction.Toolkit;
 
 public class Gestures : MonoBehaviour
 {
-    public event Action<Animator> AvatarSelected;
-
-
-    [SerializeField] private InputAction pointerPositionInputAction = new(
-        "<HandInteraction>{RightHand}/pointerPosition", expectedControlType: "Vector3");
-    [SerializeField] private InputAction pointerRotationInputAction = new(
-        "<HandInteraction>{RightHand}/pointerRotation", expectedControlType: "Quaternion");
-    [SerializeField] private InputAction pinchValueInputAction = new(
-        "<HandInteraction>{RightHand}/pinchValue", expectedControlType: "Axis");
-
+    [SerializeField] private InputActionAsset inputActionAsset;
+    [SerializeField] private string handMap = "RightHand";
     [SerializeField] private LayerMask selectableLayers = ~0;
     [SerializeField, Min(0.1f)] private float pointerRayLength = 10f;
-    [SerializeField, Range(0f, 1f)] private float pinchPressPoint = 0.75f;
-    [SerializeField] private string animationParameter = "isRunning";
     [SerializeField] private XRRayInteractor rayInteractor;
     [SerializeField] private XRInteractorLineVisual rayVisual;
-    [SerializeField] private Transform rayOrigin;
     [SerializeField] private ActionBasedController actionBasedController;
+    [SerializeField] private Transform rayOrigin;
 
-    private Animator selectedAnimator;
-    private bool wasPinching;
+    private InputAction aimAction;
+    private InputAction pinchValueAction;
+    private InputAction pinchReadyAction;
+    private Slider activeSlider;
 
     private void Awake()
     {
-        rayInteractor ??= GetComponentInChildren<XRRayInteractor>();
-        rayVisual ??= rayInteractor?.GetComponent<XRInteractorLineVisual>();
-        actionBasedController ??= rayInteractor?.GetComponent<ActionBasedController>();
+        if (!TryFindActions())
+        {
+            enabled = false;
+            return;
+        }
+
+        SetupInteractor();
+    }
+
+    private bool TryFindActions()
+    {
+        if (inputActionAsset == null)
+        {
+            Debug.LogError("[Gestures] Input action asset is missing.");
+            return false;
+        }
+
+        string prefix = $"{handMap}/";
+        aimAction = inputActionAsset.FindAction($"{prefix}Aim", false);
+        pinchValueAction = inputActionAsset.FindAction($"{prefix}PinchValue", false);
+        pinchReadyAction = inputActionAsset.FindAction($"{prefix}PinchReady", false);
+
+        if (aimAction != null && pinchValueAction != null && pinchReadyAction != null)
+            return true;
+
+        Debug.LogError($"[Gestures] Aim, PinchValue or PinchReady is missing in '{handMap}'.");
+        return false;
+    }
+
+    private void SetupInteractor()
+    {
+        if (rayInteractor == null)
+        {
+            Debug.LogError("[Gestures] XRRayInteractor is missing.");
+            enabled = false;
+            return;
+        }
+
+        rayVisual ??= rayInteractor.GetComponent<XRInteractorLineVisual>();
+        actionBasedController ??= rayInteractor.GetComponent<ActionBasedController>();
         rayOrigin ??= CreateRayOrigin();
 
-        if (rayInteractor == null || rayVisual == null || actionBasedController == null)
+        if (rayVisual == null || actionBasedController == null)
         {
-            Debug.LogError("[Gestures] XR ray setup is incomplete.");
+            Debug.LogError("[Gestures] XRInteractorLineVisual or ActionBasedController is missing.");
             enabled = false;
             return;
         }
@@ -44,105 +75,90 @@ public class Gestures : MonoBehaviour
         rayInteractor.rayOriginTransform = rayOrigin;
         rayInteractor.maxRaycastDistance = pointerRayLength;
         rayInteractor.raycastMask = selectableLayers;
-        rayInteractor.enabled = true;
-        rayVisual.enabled = true;
+        rayInteractor.enableUIInteraction = true;
 
-        InputActionProperty pinchAction = new(pinchValueInputAction);
-        actionBasedController.uiPressAction = pinchAction;
-        actionBasedController.uiPressActionValue = pinchAction;
+        actionBasedController.enableInputTracking = false;
+        actionBasedController.uiPressAction = new InputActionProperty(pinchReadyAction);
+        actionBasedController.uiPressActionValue = new InputActionProperty(pinchValueAction);
+        actionBasedController.selectAction = new InputActionProperty(pinchReadyAction);
+        actionBasedController.selectActionValue = new InputActionProperty(pinchValueAction);
+        SetInteractorActive(false);
     }
 
     private void OnEnable()
     {
-        pointerPositionInputAction.Enable();
-        pointerRotationInputAction.Enable();
-        pinchValueInputAction.Enable();
-    }
-
-    private void Update()
-    {
-        UpdateRayOrigin();
-
-        float pinchValue = pinchValueInputAction.ReadValue<float>();
-        bool isPinching = pinchValue >= pinchPressPoint;
-
-        if (isPinching && !wasPinching)
-            SelectAvatarWithPointer();
-
-        if (selectedAnimator?.isActiveAndEnabled == true)
-            selectedAnimator.SetBool(animationParameter, isPinching);
-
-        wasPinching = isPinching;
-    }
-
-    private void SelectAvatarWithPointer()
-    {
-        if (rayInteractor.TryGetCurrentUIRaycastResult(out _))
-            return;
-
-        if (!rayInteractor.TryGetCurrent3DRaycastHit(out RaycastHit hit))
-        {
-            ClearSelection();
-            return;
-        }
-
-        Animator animator = hit.collider.GetComponentInParent<Animator>();
-        if (animator == null || !HasBoolParameter(animator, animationParameter))
-        {
-            ClearSelection();
-            return;
-        }
-
-        selectedAnimator = animator;
-        AvatarSelected?.Invoke(selectedAnimator);
-    }
-
-    private Transform CreateRayOrigin()
-    {
-        GameObject origin = new("Hand Pointer Ray Origin");
-        origin.transform.SetParent(transform, false);
-        return origin.transform;
-    }
-
-    private void UpdateRayOrigin()
-    {
-        rayOrigin.SetPositionAndRotation(
-            pointerPositionInputAction.ReadValue<Vector3>(),
-            pointerRotationInputAction.ReadValue<Quaternion>());
-    }
-
-    private void ClearSelection()
-    {
-        selectedAnimator = null;
-    }
-
-    private static bool HasBoolParameter(Animator animator, string parameterName)
-    {
-        foreach (AnimatorControllerParameter parameter in animator.parameters)
-        {
-            if (parameter.name == parameterName &&
-                parameter.type == AnimatorControllerParameterType.Bool)
-            {
-                return true;
-            }
-        }
-
-        return false;
+        aimAction?.Enable();
+        pinchValueAction?.Enable();
+        pinchReadyAction?.Enable();
     }
 
     private void OnDisable()
     {
-        pointerPositionInputAction.Disable();
-        pointerRotationInputAction.Disable();
-        pinchValueInputAction.Disable();
-        selectedAnimator = null;
-        wasPinching = false;
+        aimAction?.Disable();
+        pinchValueAction?.Disable();
+        pinchReadyAction?.Disable();
+        activeSlider = null;
+        SetInteractorActive(false);
     }
 
-    private void OnDestroy()
+    private void Update()
     {
-        pointerPositionInputAction.Dispose();
-        pointerRotationInputAction.Dispose();
-        pinchValueInputAction.Dispose();
+        if (aimAction == null)
+            return;
+
+        PoseState pose = aimAction.ReadValue<PoseState>();
+        bool tracked = pose.isTracked || pose.position.sqrMagnitude > 0.0001f;
+        if (tracked)
+            rayOrigin.SetPositionAndRotation(pose.position, pose.rotation);
+
+        SetInteractorActive(tracked);
+        UpdateSliderDrag();
+    }
+
+    private void UpdateSliderDrag()
+    {
+        bool pinching = pinchReadyAction.IsPressed() || pinchValueAction.ReadValue<float>() > 0.5f;
+        if (!pinching)
+        {
+            activeSlider = null;
+            return;
+        }
+
+        if (!rayInteractor.TryGetCurrentUIRaycastResult(out var hit))
+            return;
+
+        activeSlider ??= hit.gameObject.GetComponentInParent<Slider>();
+        if (activeSlider == null || activeSlider.transform is not RectTransform sliderTransform)
+            return;
+
+        Vector3 localPoint = sliderTransform.InverseTransformPoint(hit.worldPosition);
+        float normalizedValue = Mathf.InverseLerp(
+            sliderTransform.rect.xMin,
+            sliderTransform.rect.xMax,
+            localPoint.x);
+        activeSlider.value = Mathf.Lerp(
+            activeSlider.minValue,
+            activeSlider.maxValue,
+            normalizedValue);
+    }
+
+    private void SetInteractorActive(bool active)
+    {
+        if (rayInteractor == null)
+            return;
+
+        if (rayInteractor.enabled != active)
+            rayInteractor.enabled = active;
+        if (rayVisual != null && rayVisual.enabled != active)
+            rayVisual.enabled = active;
+    }
+
+    private Transform CreateRayOrigin()
+    {
+        XROrigin xrOrigin = FindFirstObjectByType<XROrigin>();
+        Transform parent = xrOrigin?.CameraFloorOffsetObject?.transform ?? transform;
+        GameObject origin = new($"{handMap} Hand Ray Origin");
+        origin.transform.SetParent(parent, false);
+        return origin.transform;
     }
 }

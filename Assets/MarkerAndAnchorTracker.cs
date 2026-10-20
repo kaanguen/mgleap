@@ -29,6 +29,7 @@ public class MarkerAndAnchorTracker : MonoBehaviour
     {
         public ARAnchor Anchor;
         public Renderer[] Renderers;
+        public Canvas[] Canvases;
         public bool Accepted;
         public bool HasConfidence;
         public MLXrAnchorSubsystem.AnchorConfidence LastConfidence;
@@ -127,7 +128,8 @@ public class MarkerAndAnchorTracker : MonoBehaviour
             _anchorsByMarkerId.Add(markerId, new AnchorState
             {
                 Anchor = anchor,
-                Renderers = instance.GetComponentsInChildren<Renderer>(true)
+                Renderers = instance.GetComponentsInChildren<Renderer>(true),
+                Canvases = instance.GetComponentsInChildren<Canvas>(true)
             });
             SetRendererVisibility(_anchorsByMarkerId[markerId], false);
             Debug.Log($"[MarkerAndAnchorTracker] Anchor created for marker {markerId}.");
@@ -207,10 +209,22 @@ public class MarkerAndAnchorTracker : MonoBehaviour
 
     private static void SetRendererVisibility(AnchorState state, bool visible)
     {
-        for (int i = 0; i < state.Renderers.Length; i++)
+        if (state.Renderers != null)
         {
-            if (state.Renderers[i] != null)
-                state.Renderers[i].enabled = visible;
+            for (int i = 0; i < state.Renderers.Length; i++)
+            {
+                if (state.Renderers[i] != null)
+                    state.Renderers[i].enabled = visible;
+            }
+        }
+
+        if (state.Canvases != null)
+        {
+            for (int i = 0; i < state.Canvases.Length; i++)
+            {
+                if (state.Canvases[i] != null)
+                    state.Canvases[i].enabled = visible;
+            }
         }
     }
 
