@@ -73,6 +73,8 @@ public class UIScript : MonoBehaviour
         }
         else
         {
+            avatar.applyRootMotion = false;
+
             if (!HasParameter(avatar, speedParameter, AnimatorControllerParameterType.Float))
                 Debug.LogError($"[UIScript] Animator float parameter '{speedParameter}' is missing.");
             if (!HasParameter(avatar, runningParameter, AnimatorControllerParameterType.Bool))
@@ -91,7 +93,6 @@ public class UIScript : MonoBehaviour
         {
             avatar.SetFloat(speedParameter, value);
             avatar.SetBool(runningParameter, isRunning);
-            avatar.speed = isRunning ? value : 1f;
         }
     }
 
