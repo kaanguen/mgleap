@@ -10,7 +10,6 @@ using MagicLeap.OpenXR.Subsystems;
 using UnityEngine.XR.ARSubsystems;
 using UnityEngine.XR.Management;
 
-
 public class MarkerAndAnchorTracker : MonoBehaviour
 {
     [SerializeField] private XROrigin _xrOrigin;
@@ -92,7 +91,6 @@ public class MarkerAndAnchorTracker : MonoBehaviour
         if (_xrOrigin == null)
             _xrOrigin = FindAnyObjectByType<XROrigin>();
 
-
         if (_xrOrigin == null || _xrOrigin.CameraFloorOffsetObject == null)
         {
             Debug.LogError(
@@ -129,9 +127,6 @@ public class MarkerAndAnchorTracker : MonoBehaviour
             enabled = false;
             return;
         }
-
-
-
         var settings = new MarkerDetectorSettings
         {
             MarkerDetectorProfile = _detectorProfile,
@@ -421,9 +416,7 @@ public class MarkerAndAnchorTracker : MonoBehaviour
                 Source = plane,
                 Visual = visual.transform,
                 Filter = visual.AddComponent<MeshFilter>(),
-                Renderer = visual.AddComponent<MeshRenderer>(),
-                ReferencePoint = position,
-                Normal = normal
+                Renderer = visual.AddComponent<MeshRenderer>()
             };
             state.Renderer.shadowCastingMode = sourceRenderer.shadowCastingMode;
             state.Renderer.receiveShadows = sourceRenderer.receiveShadows;
@@ -433,8 +426,11 @@ public class MarkerAndAnchorTracker : MonoBehaviour
             _smoothedPlanes.Add(plane.trackableId, state);
         }
 
-        state.Filter.sharedMesh = filter != null ? filter.sharedMesh : null;
-        state.Renderer.sharedMaterial = sourceRenderer.sharedMaterial;
+        Mesh mesh = filter != null ? filter.sharedMesh : null;
+        if (state.Filter.sharedMesh != mesh)
+            state.Filter.sharedMesh = mesh;
+        if (state.Renderer.sharedMaterial != sourceRenderer.sharedMaterial)
+            state.Renderer.sharedMaterial = sourceRenderer.sharedMaterial;
         bool floor = IsPlaneTypeAllowed(plane) && normal.y >= 0.5f;
         if (visible && floor)
         {
@@ -500,14 +496,15 @@ public class MarkerAndAnchorTracker : MonoBehaviour
             return;
 
         Transform origin = _xrOrigin.CameraFloorOffsetObject.transform;
+        Vector3 spawnPosition = GetCharacterSpawnPosition();
         foreach (KeyValuePair<ulong, MarkerState> entry in _markersById)
         {
             MarkerState marker = entry.Value;
             Vector3 worldPosition = marker.Instance != null
-                ? origin.TransformPoint(marker.PlacementSessionPosition) : GetCharacterSpawnPosition();
+                ? origin.TransformPoint(marker.PlacementSessionPosition) : spawnPosition;
             ARPlane plane = marker.Instance != null ? _planeManager.GetPlane(marker.GroundPlaneId) : null;
             if (plane == null || plane.subsumedBy != null || plane.trackingState == TrackingState.None)
-                plane = FindCharacterPlane(worldPosition);
+                plane = FindClosestPlane(worldPosition, float.PositiveInfinity, true);
             if (plane == null)
                 continue;
 
@@ -548,7 +545,7 @@ public class MarkerAndAnchorTracker : MonoBehaviour
                     continue;
 
                 Transform root = marker.Instance.transform;
-                if (!TryGetLowestCharacterPoint(marker, Vector3.up, out Vector3 lowestPoint))
+                if (!TryGetLowestCharacterPoint(marker, out Vector3 lowestPoint))
                 {
                     lowestPoint = root.position;
                     Debug.LogWarning($"[MarkerPlacement] Marker {entry.Key}: no character mesh found; using prefab pivot.");
@@ -567,7 +564,7 @@ public class MarkerAndAnchorTracker : MonoBehaviour
             Transform instanceTransform = marker.Instance.transform;
             Vector3 contactOffset = instanceTransform.TransformVector(marker.LocalGroundContact);
             instanceTransform.position = GetGroundedPosition(surfacePosition, contactOffset,
-                Vector3.up, _characterGroundClearance);
+                _characterGroundClearance);
         }
     }
 
@@ -591,20 +588,21 @@ public class MarkerAndAnchorTracker : MonoBehaviour
     }
 
     private static Vector3 GetGroundedPosition(Vector3 surfacePosition, Vector3 contactOffset,
-        Vector3 normal, float clearance)
+        float clearance)
     {
-        return surfacePosition + normal * (clearance - Vector3.Dot(contactOffset, normal));
+        return new Vector3(surfacePosition.x, surfacePosition.y + clearance - contactOffset.y,
+            surfacePosition.z);
     }
 
-    private ARPlane FindCharacterPlane(Vector3 worldPosition)
+    private ARPlane FindClosestPlane(Vector3 worldPosition, float maxDistance, bool requireHorizontal)
     {
         ARPlane closest = null;
-        float closestDistance = float.PositiveInfinity;
+        float closestDistance = maxDistance;
         foreach (ARPlane plane in _planeManager.trackables)
         {
             if (plane.subsumedBy != null || plane.trackingState == TrackingState.None || !IsPlaneTypeAllowed(plane))
                 continue;
-            if (Mathf.Abs(Vector3.Dot(plane.transform.up, Vector3.up)) < 0.5f)
+            if (requireHorizontal && Mathf.Abs(Vector3.Dot(plane.transform.up, Vector3.up)) < 0.5f)
                 continue;
             Vector3 local = plane.transform.InverseTransformPoint(worldPosition);
             float distance = Mathf.Abs(Vector3.Dot(worldPosition - plane.transform.position, plane.transform.up));
@@ -617,7 +615,7 @@ public class MarkerAndAnchorTracker : MonoBehaviour
         return closest;
     }
 
-    private static bool TryGetLowestCharacterPoint(MarkerState marker, Vector3 normal, out Vector3 lowestPoint)
+    private static bool TryGetLowestCharacterPoint(MarkerState marker, out Vector3 lowestPoint)
     {
         lowestPoint = Vector3.zero;
         float lowestHeight = float.PositiveInfinity;
@@ -636,7 +634,7 @@ public class MarkerAndAnchorTracker : MonoBehaviour
                 foreach (Vector3 vertex in vertices)
                 {
                     Vector3 point = skin.transform.TransformPoint(vertex);
-                    float height = Vector3.Dot(point, normal);
+                    float height = point.y;
                     if (height >= lowestHeight)
                         continue;
                     lowestHeight = height;
@@ -668,7 +666,7 @@ public class MarkerAndAnchorTracker : MonoBehaviour
                     new Vector3((i & 1) == 0 ? -1f : 1f, (i & 2) == 0 ? -1f : 1f,
                         (i & 4) == 0 ? -1f : 1f));
                 Vector3 point = renderer.transform.TransformPoint(corner);
-                float height = Vector3.Dot(point, normal);
+                float height = point.y;
                 if (height >= lowestHeight)
                     continue;
                 lowestHeight = height;
@@ -796,9 +794,6 @@ public class MarkerAndAnchorTracker : MonoBehaviour
             var visualizer = plane.GetComponent<ARPlaneMeshVisualizer>();
             if (visualizer != null)
                 visualizer.enabled = visible;
-            var collider = plane.GetComponent<MeshCollider>();
-            if (collider != null)
-                collider.enabled = visible;
         }
     }
 
@@ -810,33 +805,10 @@ public class MarkerAndAnchorTracker : MonoBehaviour
         {
             // Convert the marker position to Unity world space.
             Vector3 worldPosition = sessionOrigin.TransformPoint(marker.SessionPosition);
-            ARPlane closestPlane = null;
-            float closestDistance = _maxMarkerPlaneDistance;
-            foreach (ARPlane plane in _planeManager.trackables)
-            {
-                // Skip merged planes and planes without tracking.
-                if (plane.subsumedBy != null || plane.trackingState == TrackingState.None)
-                    continue;
-                if (!IsPlaneTypeAllowed(plane))
-                    continue;
-
-                // Local X/Z gives the marker's projection onto the plane.
-                Vector3 local = plane.transform.InverseTransformPoint(worldPosition);
-                // Measure perpendicular distance to the surface in world units.
-                float distance = Mathf.Abs(Vector3.Dot(worldPosition - plane.transform.position,
-                    plane.transform.up));
-                // Require proximity and a projection inside the plane boundary.
-                if (distance > closestDistance ||
-                    !ContainsPoint(plane, new Vector2(local.x, local.z), _planeBoundaryTolerance))
-                    continue;
-
-                closestPlane = plane;
-                closestDistance = distance;
-            }
+            ARPlane closestPlane = FindClosestPlane(worldPosition, _maxMarkerPlaneDistance, false);
             if (closestPlane != null)
                 _visiblePlaneIds.Add(closestPlane.trackableId);
         }
-
     }
 
     private bool IsPlaneTypeAllowed(ARPlane plane)
