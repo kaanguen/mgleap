@@ -33,6 +33,8 @@ public class MarkerAndAnchorTracker : MonoBehaviour
     [SerializeField, Min(0f), Tooltip("Allow small gaps at detected surface edges, in meters.")]
     private float _planeBoundaryTolerance = 0.05f;
     [Header("Character placement")]
+    [SerializeField, Min(0f), Tooltip("Horizontal spawn distance in front of the user's current view, in meters.")]
+    private float _characterDistanceFromUser = 5f;
     [SerializeField, Tooltip("Optional gap between the character's soles and the detected surface, in meters.")]
     private float _characterGroundClearance = 0f;
     [SerializeField, Min(0f), Tooltip("Response time for floor height and tilt corrections, in seconds. Zero disables smoothing.")]
@@ -292,9 +294,11 @@ public class MarkerAndAnchorTracker : MonoBehaviour
             return;
         }
 
-        // Build one search box around all markers in OpenXR session space.
+        // Include the avatar's target so native floor detection also covers the spawn area.
         bool first = true;
         var bounds = new Bounds();
+        Transform origin = _xrOrigin.CameraFloorOffsetObject.transform;
+        Vector3 spawnTarget = origin.InverseTransformPoint(GetCharacterSpawnPosition());
         foreach (MarkerState marker in _markersById.Values)
         {
             if (first)
@@ -304,6 +308,7 @@ public class MarkerAndAnchorTracker : MonoBehaviour
             }
             else
                 bounds.Encapsulate(marker.SessionPosition);
+            bounds.Encapsulate(marker.Instance != null ? marker.PlacementSessionPosition : spawnTarget);
         }
 
         // Configure native detection; this script does not detect surfaces itself.
@@ -498,9 +503,8 @@ public class MarkerAndAnchorTracker : MonoBehaviour
         foreach (KeyValuePair<ulong, MarkerState> entry in _markersById)
         {
             MarkerState marker = entry.Value;
-            Vector3 sessionPosition = marker.Instance != null
-                ? marker.PlacementSessionPosition : marker.SessionPosition;
-            Vector3 worldPosition = origin.TransformPoint(sessionPosition);
+            Vector3 worldPosition = marker.Instance != null
+                ? origin.TransformPoint(marker.PlacementSessionPosition) : GetCharacterSpawnPosition();
             ARPlane plane = marker.Instance != null ? _planeManager.GetPlane(marker.GroundPlaneId) : null;
             if (plane == null || plane.subsumedBy != null || plane.trackingState == TrackingState.None)
                 plane = FindCharacterPlane(worldPosition);
@@ -512,7 +516,7 @@ public class MarkerAndAnchorTracker : MonoBehaviour
             Vector3 normal = surface.up;
             if (Vector3.Dot(normal, Vector3.up) < 0f)
                 normal = -normal;
-            // Preserve the marker footprint; only take height from the filtered floor.
+            // Keep the spawn footprint five meters ahead; use the filtered floor height.
             Vector3 surfacePosition = Mathf.Abs(normal.y) >= 0.5f
                 ? new Vector3(worldPosition.x, GetPlaneHeightAtXZ(worldPosition, surface.position, normal), worldPosition.z)
                 : new Plane(normal, surface.position).ClosestPointOnPlane(worldPosition);
@@ -522,7 +526,7 @@ public class MarkerAndAnchorTracker : MonoBehaviour
                 marker.Instance = Instantiate(_markerPrefab, surfacePosition,
                     GetUprightRotation(surfacePosition, origin.rotation * marker.SessionRotation,
                         _xrOrigin.Camera.transform.position), origin);
-                marker.PlacementSessionPosition = marker.SessionPosition;
+                marker.PlacementSessionPosition = origin.InverseTransformPoint(worldPosition);
                 marker.SpawnFrame = Time.frameCount;
                 marker.GroundContactReady = false;
                 marker.Renderers = marker.Instance.GetComponentsInChildren<Renderer>(true);
@@ -567,6 +571,25 @@ public class MarkerAndAnchorTracker : MonoBehaviour
         }
     }
 
+    private Vector3 GetCharacterSpawnPosition()
+    {
+        Transform user = _xrOrigin.Camera.transform;
+        return GetForwardGroundPosition(user.position, user.forward, user.right,
+            _characterDistanceFromUser);
+    }
+
+    private static Vector3 GetForwardGroundPosition(Vector3 position, Vector3 forward,
+        Vector3 right, float distance)
+    {
+        // Ignore head pitch so looking down does not shorten the horizontal distance.
+        Vector3 direction = Vector3.ProjectOnPlane(forward, Vector3.up);
+        if (direction.sqrMagnitude < 0.0001f)
+            direction = Vector3.ProjectOnPlane(Vector3.Cross(right, Vector3.up), Vector3.up);
+        if (direction.sqrMagnitude < 0.0001f)
+            direction = Vector3.forward;
+        return position + direction.normalized * Mathf.Max(0f, distance);
+    }
+
     private static Vector3 GetGroundedPosition(Vector3 surfacePosition, Vector3 contactOffset,
         Vector3 normal, float clearance)
     {
@@ -576,10 +599,12 @@ public class MarkerAndAnchorTracker : MonoBehaviour
     private ARPlane FindCharacterPlane(Vector3 worldPosition)
     {
         ARPlane closest = null;
-        float closestDistance = _markersOnFloor ? float.PositiveInfinity : _maxMarkerPlaneDistance;
+        float closestDistance = float.PositiveInfinity;
         foreach (ARPlane plane in _planeManager.trackables)
         {
             if (plane.subsumedBy != null || plane.trackingState == TrackingState.None || !IsPlaneTypeAllowed(plane))
+                continue;
+            if (Mathf.Abs(Vector3.Dot(plane.transform.up, Vector3.up)) < 0.5f)
                 continue;
             Vector3 local = plane.transform.InverseTransformPoint(worldPosition);
             float distance = Mathf.Abs(Vector3.Dot(worldPosition - plane.transform.position, plane.transform.up));
