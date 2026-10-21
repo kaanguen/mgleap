@@ -181,6 +181,7 @@ MonoBehaviour:
   _maxMarkerPlaneDistance: 0.15
   _planeBoundaryTolerance: 0.05
   _characterGroundClearance: 0
+  _planeSmoothingTime: 0.25
   _logPlaneDiagnostics: 1
   _planeDiagnosticsInterval: 5
   _maxPlaneDiagnosticPairs: 30

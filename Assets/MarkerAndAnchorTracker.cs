@@ -35,12 +35,16 @@ public class MarkerAndAnchorTracker : MonoBehaviour
     [Header("Character placement")]
     [SerializeField, Tooltip("Optional gap between the character's soles and the detected surface, in meters.")]
     private float _characterGroundClearance = 0f;
+    [SerializeField, Min(0f), Tooltip("Response time for floor height and tilt corrections, in seconds. Zero disables smoothing.")]
+    private float _planeSmoothingTime = 0.25f;
     [Header("Plane diagnostics")]
     [SerializeField] private bool _logPlaneDiagnostics = true;
     [SerializeField, Min(1f)] private float _planeDiagnosticsInterval = 5f;
     [SerializeField, Min(1)] private int _maxPlaneDiagnosticPairs = 30;
     private readonly Dictionary<ulong, MarkerState> _markersById = new();
     private readonly HashSet<TrackableId> _visiblePlaneIds = new();
+    private readonly Dictionary<TrackableId, SmoothedPlane> _smoothedPlanes = new();
+    private readonly List<TrackableId> _removedPlaneIds = new();
     private bool _spatialMappingGranted;
     private bool _planeSelectionDirty;
     private bool _planeDetectionConfigured;
@@ -67,6 +71,18 @@ public class MarkerAndAnchorTracker : MonoBehaviour
         public Animator Animator;
         public AnimatorCullingMode OriginalCullingMode;
         public Renderer[] Renderers;
+    }
+
+    private sealed class SmoothedPlane
+    {
+        public ARPlane Source;
+        public Transform Visual;
+        public MeshFilter Filter;
+        public MeshRenderer Renderer;
+        // Store filtering state in session space so origin changes do not cause lag.
+        public Vector3 ReferencePoint;
+        public Vector3 Normal;
+        public bool FloorInitialized;
     }
 
     private void Start()
@@ -182,6 +198,10 @@ public class MarkerAndAnchorTracker : MonoBehaviour
 
     private void OnDestroy()
     {
+        foreach (SmoothedPlane state in _smoothedPlanes.Values)
+            if (state.Visual != null)
+                Destroy(state.Visual.gameObject);
+        _smoothedPlanes.Clear();
         if (_planeManager != null)
         {
             _planeManager.planesChanged -= OnPlanesChanged;
@@ -324,6 +344,7 @@ public class MarkerAndAnchorTracker : MonoBehaviour
         // The stock visualizer gates rendering on ARSession.state in Update.
         // Native plane tracking and a valid mesh determine visibility here.
         int renderedPlanes = 0;
+        Transform origin = _xrOrigin.CameraFloorOffsetObject.transform;
         foreach (ARPlane plane in _planeManager.trackables)
         {
             var meshFilter = plane.GetComponent<MeshFilter>();
@@ -335,17 +356,31 @@ public class MarkerAndAnchorTracker : MonoBehaviour
             var meshRenderer = plane.GetComponent<MeshRenderer>();
             if (meshRenderer != null)
             {
-                meshRenderer.enabled = visible && hasMesh;
-                if (meshRenderer.enabled)
+                SmoothedPlane smoothed = UpdateSmoothedPlane(plane, meshFilter, meshRenderer,
+                    origin, visible && hasMesh);
+                // Render a separate child; never change the native trackable pose.
+                meshRenderer.enabled = false;
+                smoothed.Renderer.enabled = visible && hasMesh;
+                if (smoothed.Renderer.enabled)
                     renderedPlanes++;
             }
             var outline = plane.GetComponent<LineRenderer>();
             if (outline != null)
+            {
                 outline.enabled = visible && outline.positionCount >= 3;
+                UpdateSmoothedOutline(plane, outline);
+            }
             var collider = plane.GetComponent<MeshCollider>();
             if (collider != null)
                 collider.enabled = visible && hasMesh;
         }
+
+        _removedPlaneIds.Clear();
+        foreach (var entry in _smoothedPlanes)
+            if (entry.Value.Source == null)
+                _removedPlaneIds.Add(entry.Key);
+        foreach (TrackableId id in _removedPlaneIds)
+            _smoothedPlanes.Remove(id);
 
         UpdateCharacterPlacements();
 
@@ -361,6 +396,97 @@ public class MarkerAndAnchorTracker : MonoBehaviour
             _nextPlaneDiagnosticsTime = Time.unscaledTime + Mathf.Max(1f, _planeDiagnosticsInterval);
             LogPlaneDiagnostics();
         }
+    }
+
+    private SmoothedPlane UpdateSmoothedPlane(ARPlane plane, MeshFilter filter,
+        MeshRenderer sourceRenderer, Transform origin, bool visible)
+    {
+        Vector3 position = origin.InverseTransformPoint(plane.transform.position);
+        Vector3 normal = origin.InverseTransformDirection(plane.transform.up).normalized;
+        if (normal.y < 0f)
+            normal = -normal;
+
+        if (!_smoothedPlanes.TryGetValue(plane.trackableId, out SmoothedPlane state))
+        {
+            var visual = new GameObject("Smoothed plane visual");
+            visual.layer = plane.gameObject.layer;
+            visual.transform.SetParent(plane.transform, false);
+            state = new SmoothedPlane
+            {
+                Source = plane,
+                Visual = visual.transform,
+                Filter = visual.AddComponent<MeshFilter>(),
+                Renderer = visual.AddComponent<MeshRenderer>(),
+                ReferencePoint = position,
+                Normal = normal
+            };
+            state.Renderer.shadowCastingMode = sourceRenderer.shadowCastingMode;
+            state.Renderer.receiveShadows = sourceRenderer.receiveShadows;
+            state.Renderer.renderingLayerMask = sourceRenderer.renderingLayerMask;
+            state.Renderer.sortingLayerID = sourceRenderer.sortingLayerID;
+            state.Renderer.sortingOrder = sourceRenderer.sortingOrder;
+            _smoothedPlanes.Add(plane.trackableId, state);
+        }
+
+        state.Filter.sharedMesh = filter != null ? filter.sharedMesh : null;
+        state.Renderer.sharedMaterial = sourceRenderer.sharedMaterial;
+        bool floor = IsPlaneTypeAllowed(plane) && normal.y >= 0.5f;
+        if (visible && floor)
+        {
+            // Use the first valid floor measurement immediately.
+            if (!state.FloorInitialized)
+            {
+                state.ReferencePoint = position;
+                state.Normal = normal;
+                state.FloorInitialized = true;
+            }
+            // Filter height at a fixed X/Z reference, not the changing boundary center.
+            float targetHeight = GetPlaneHeightAtXZ(state.ReferencePoint, position, normal);
+            float blend = PlaneSmoothingBlend(Time.unscaledDeltaTime, _planeSmoothingTime);
+            state.ReferencePoint.y = Mathf.Lerp(state.ReferencePoint.y, targetHeight, blend);
+            state.Normal = Vector3.Lerp(state.Normal, normal, blend).normalized;
+        }
+
+        if (floor && state.FloorInitialized)
+        {
+            position.y = GetPlaneHeightAtXZ(position, state.ReferencePoint, state.Normal);
+            state.Visual.SetPositionAndRotation(origin.TransformPoint(position),
+                Quaternion.FromToRotation(origin.TransformDirection(normal),
+                    origin.TransformDirection(state.Normal)) * plane.transform.rotation);
+        }
+        else
+            state.Visual.SetPositionAndRotation(plane.transform.position, plane.transform.rotation);
+
+        return state;
+    }
+
+    private void UpdateSmoothedOutline(ARPlane plane, LineRenderer outline)
+    {
+        if (!_smoothedPlanes.TryGetValue(plane.trackableId, out SmoothedPlane state) ||
+            !plane.boundary.IsCreated)
+            return;
+
+        // Rebuild from native boundary points to avoid accumulating frame-to-frame offsets.
+        outline.positionCount = plane.boundary.Length;
+        for (int i = 0; i < plane.boundary.Length; i++)
+        {
+            Vector2 point = plane.boundary[i];
+            Vector3 worldPoint = state.Visual.TransformPoint(new Vector3(point.x, 0f, point.y));
+            outline.SetPosition(i, outline.useWorldSpace ? worldPoint :
+                plane.transform.InverseTransformPoint(worldPoint));
+        }
+    }
+
+    private static float PlaneSmoothingBlend(float deltaTime, float responseTime)
+    {
+        // Exponential filtering gives the same response at different frame rates.
+        return responseTime <= 0f ? 1f : 1f - Mathf.Exp(-Mathf.Max(0f, deltaTime) / responseTime);
+    }
+
+    private static float GetPlaneHeightAtXZ(Vector3 point, Vector3 planePoint, Vector3 normal)
+    {
+        return planePoint.y - (normal.x * (point.x - planePoint.x) +
+            normal.z * (point.z - planePoint.z)) / normal.y;
     }
 
     private void UpdateCharacterPlacements()
@@ -381,12 +507,15 @@ public class MarkerAndAnchorTracker : MonoBehaviour
             if (plane == null)
                 continue;
 
-            // Project onto the detected surface instead of using the marker's height.
-            Vector3 normal = plane.transform.up;
+            Transform surface = _smoothedPlanes.TryGetValue(plane.trackableId, out SmoothedPlane smoothed)
+                ? smoothed.Visual : plane.transform;
+            Vector3 normal = surface.up;
             if (Vector3.Dot(normal, Vector3.up) < 0f)
                 normal = -normal;
-            Vector3 surfacePosition = new Plane(normal, plane.transform.position)
-                .ClosestPointOnPlane(worldPosition);
+            // Preserve the marker footprint; only take height from the filtered floor.
+            Vector3 surfacePosition = Mathf.Abs(normal.y) >= 0.5f
+                ? new Vector3(worldPosition.x, GetPlaneHeightAtXZ(worldPosition, surface.position, normal), worldPosition.z)
+                : new Plane(normal, surface.position).ClosestPointOnPlane(worldPosition);
 
             if (marker.Instance == null)
             {
@@ -415,7 +544,7 @@ public class MarkerAndAnchorTracker : MonoBehaviour
                     continue;
 
                 Transform root = marker.Instance.transform;
-                if (!TryGetLowestCharacterPoint(marker, normal, out Vector3 lowestPoint))
+                if (!TryGetLowestCharacterPoint(marker, Vector3.up, out Vector3 lowestPoint))
                 {
                     lowestPoint = root.position;
                     Debug.LogWarning($"[MarkerPlacement] Marker {entry.Key}: no character mesh found; using prefab pivot.");
@@ -434,7 +563,7 @@ public class MarkerAndAnchorTracker : MonoBehaviour
             Transform instanceTransform = marker.Instance.transform;
             Vector3 contactOffset = instanceTransform.TransformVector(marker.LocalGroundContact);
             instanceTransform.position = GetGroundedPosition(surfacePosition, contactOffset,
-                normal, _characterGroundClearance);
+                Vector3.up, _characterGroundClearance);
         }
     }
 
@@ -576,6 +705,8 @@ public class MarkerAndAnchorTracker : MonoBehaviour
 
                 var filter = plane.GetComponent<MeshFilter>();
                 var renderer = plane.GetComponent<MeshRenderer>();
+                if (_smoothedPlanes.TryGetValue(plane.trackableId, out SmoothedPlane displayed))
+                    renderer = displayed.Renderer;
                 var visualizer = plane.GetComponent<ARPlaneMeshVisualizer>();
                 Material material = renderer != null ? renderer.sharedMaterial : null;
                 int vertexCount = filter != null && filter.sharedMesh != null
