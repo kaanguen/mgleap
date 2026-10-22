@@ -358,6 +358,17 @@
       },
       "url": "https://packages.unity.com"
     },
+    "com.velorexe.androidbluetoothlowenergy": {
+      "version": "https://github.com/Velorexe/Unity-Android-Bluetooth-Low-Energy.git",
+      "depth": 0,
+      "source": "git",
+      "dependencies": {
+        "com.unity.mobile.android-logcat": "1.2.3",
+        "com.unity.ugui": "1.0.0",
+        "com.unity.modules.androidjni": "^1.0.0"
+      },
+      "hash": "55d8c12e155cc45bc26cea120d5e8c1e5f231b9f"
+    },
     "com.unity.modules.ai": {
       "version": "1.0.0",
       "depth": 0,

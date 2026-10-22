@@ -11,6 +11,7 @@
     "com.unity.visualscripting": "1.9.4",
     "com.unity.xr.hands": "1.4.3",
     "com.unity.xr.openxr": "1.14.3",
+    "com.velorexe.androidbluetoothlowenergy": "https://github.com/Velorexe/Unity-Android-Bluetooth-Low-Energy.git",
     "com.unity.modules.ai": "1.0.0",
     "com.unity.modules.androidjni": "1.0.0",
     "com.unity.modules.animation": "1.0.0",
