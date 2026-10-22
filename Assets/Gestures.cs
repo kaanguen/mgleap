@@ -19,6 +19,7 @@ public class Gestures : MonoBehaviour
     private InputAction aimAction;
     private InputAction pinchValueAction;
     private InputAction pinchReadyAction;
+    private InputAction pinchPressAction;
     private Slider activeSlider;
 
     private void Awake()
@@ -78,15 +79,22 @@ public class Gestures : MonoBehaviour
         rayInteractor.enableUIInteraction = true;
 
         actionBasedController.enableInputTracking = false;
-        actionBasedController.uiPressAction = new InputActionProperty(pinchReadyAction);
+        // XRI checks the Performed phase. A Value action performs even for a weak pinch,
+        // so use a separate Button action with an explicit press threshold.
+        pinchPressAction = new InputAction("Hand UI Pinch Press", InputActionType.Button,
+            interactions: "Press(pressPoint=0.7)");
+        foreach (var binding in pinchValueAction.bindings)
+            pinchPressAction.AddBinding(binding);
+        actionBasedController.uiPressAction = new InputActionProperty(pinchPressAction);
         actionBasedController.uiPressActionValue = new InputActionProperty(pinchValueAction);
-        actionBasedController.selectAction = new InputActionProperty(pinchReadyAction);
+        actionBasedController.selectAction = new InputActionProperty(pinchPressAction);
         actionBasedController.selectActionValue = new InputActionProperty(pinchValueAction);
         SetInteractorActive(false);
     }
 
     private void OnEnable()
     {
+        pinchPressAction?.Enable();
         aimAction?.Enable();
         pinchValueAction?.Enable();
         pinchReadyAction?.Enable();
@@ -94,11 +102,28 @@ public class Gestures : MonoBehaviour
 
     private void OnDisable()
     {
+        pinchPressAction?.Disable();
         aimAction?.Disable();
         pinchValueAction?.Disable();
         pinchReadyAction?.Disable();
         activeSlider = null;
         SetInteractorActive(false);
+    }
+
+    private void Start()
+    {
+#if UNITY_ANDROID && !UNITY_EDITOR
+        const string handPermission = "com.magicleap.permission.HAND_TRACKING";
+        if (!UnityEngine.Android.Permission.HasUserAuthorizedPermission(handPermission))
+            UnityEngine.Android.Permission.RequestUserPermission(handPermission);
+#endif
+    }
+
+    private void OnDestroy()
+    {
+        // Release the runtime-created action; the original asset belongs to the scene.
+        pinchPressAction?.Disable();
+        pinchPressAction?.Dispose();
     }
 
     private void Update()
@@ -109,7 +134,10 @@ public class Gestures : MonoBehaviour
         PoseState pose = aimAction.ReadValue<PoseState>();
         bool tracked = pose.isTracked || pose.position.sqrMagnitude > 0.0001f;
         if (tracked)
-            rayOrigin.SetPositionAndRotation(pose.position, pose.rotation);
+        {
+            rayOrigin.localPosition = pose.position;
+            rayOrigin.localRotation = pose.rotation;
+        }
 
         SetInteractorActive(tracked);
         UpdateSliderDrag();
@@ -117,7 +145,7 @@ public class Gestures : MonoBehaviour
 
     private void UpdateSliderDrag()
     {
-        bool pinching = pinchReadyAction.IsPressed() || pinchValueAction.ReadValue<float>() > 0.5f;
+        bool pinching = pinchPressAction != null && pinchPressAction.IsPressed();
         if (!pinching)
         {
             activeSlider = null;

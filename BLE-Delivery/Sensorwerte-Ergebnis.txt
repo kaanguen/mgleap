@@ -1,0 +1,1 @@
+Prefab und SampleScene erweitert. SensorDetailsText und CosinussMeasurements verknüpft. Canvas 1000 x 1050.

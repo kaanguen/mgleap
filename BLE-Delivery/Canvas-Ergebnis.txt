@@ -1,0 +1,5 @@
+Erstellt: Assets/HeartRateBLE/HeartRateCanvas.prefab
+Szene: Assets/Scenes/SampleScene.unity
+World Space, 900 x 720, Maßstab 0.001, Kamera=Main Camera
+Buttons=4, TMP-Dropdown=1, TMP-Messwert/Status vorhanden
+Inspector-Referenzen geprüft, XRUIInputModule aktiv, TrackedDeviceGraphicRaycaster vorhanden.

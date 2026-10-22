@@ -13,4 +13,12 @@
   <uses-permission android:name="com.magicleap.permission.SPATIAL_ANCHOR" />
   <uses-permission android:name="com.magicleap.permission.HAND_TRACKING" />
   <uses-permission android:name="com.magicleap.permission.SPATIAL_MAPPING" />
+  <!-- BLE: Android 10/11 requires location access for foreground scanning. -->
+  <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
+  <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+  <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+  <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
+  <!-- Android 12+: this app does not derive location from BLE scan results. -->
+  <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
+  <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 </manifest>
