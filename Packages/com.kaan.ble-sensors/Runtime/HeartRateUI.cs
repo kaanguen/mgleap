@@ -4,12 +4,12 @@ using UnityEngine;
 
 public sealed class HeartRateUI : MonoBehaviour
 {
-    public HeartRateBLE bluetooth;
+    public BleConnection bluetooth;
     public TMP_Dropdown devices;
     public TMP_Text statusText;
     public TMP_Text heartRateText;
     public TMP_Text sensorDetailsText;
-    public CosinussMeasurements sensor;
+    public SensorMeasurements sensor;
     public UnityEngine.UI.Button scanButton;
     public UnityEngine.UI.Button stopButton;
     public UnityEngine.UI.Button connectButton;
@@ -25,8 +25,15 @@ public sealed class HeartRateUI : MonoBehaviour
             Debug.LogError("HeartRateUI: Bitte alle Inspector-Felder zuweisen.");
             enabled = false; return;
         }
-        sensor = sensor != null ? sensor : GetComponent<CosinussMeasurements>();
-        if (sensor == null) sensor = gameObject.AddComponent<CosinussMeasurements>();
+        sensor = sensor != null ? sensor : GetComponent<SensorMeasurements>();
+        if (sensor == null) sensor = gameObject.AddComponent<SensorMeasurements>();
+        if (sensorDetailsText != null)
+        {
+            sensorDetailsText.richText = false;
+            sensorDetailsText.enableAutoSizing = true;
+            sensorDetailsText.fontSizeMin = 14;
+            sensorDetailsText.fontSizeMax = 22;
+        }
         sensor.Changed += Refresh;
         bluetooth.Changed += Refresh;
         devices.onValueChanged.AddListener(bluetooth.SelectDevice);
@@ -50,8 +57,8 @@ public sealed class HeartRateUI : MonoBehaviour
     void Refresh()
     {
         statusText.text = bluetooth.Status
-            + (string.IsNullOrEmpty(bluetooth.RrIntervals) ? "" : "\nRR: " + bluetooth.RrIntervals);
-        heartRateText.text = bluetooth.Measurement;
+            + (string.IsNullOrEmpty(sensor.RrIntervals) ? "" : "\nRR: " + sensor.RrIntervals);
+        heartRateText.text = sensor.Measurement;
         if (sensorDetailsText != null && sensor != null) sensorDetailsText.text = sensor.Details;
         var names = new List<string>();
         for (int i = 0; i < bluetooth.DeviceIds.Count; i++)

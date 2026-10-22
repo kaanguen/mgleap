@@ -1,0 +1,122 @@
+[
+  {
+    "from": "Assets/HeartRateBLE/AndroidBleGattBackend.cs",
+    "to": "Packages/com.kaan.ble-sensors/Runtime/AndroidBleGattBackend.cs",
+    "sha256": "ce0fa52840891be30fa33302a6f617602385b048d16f1ebee6712d54d2e0e4bd"
+  },
+  {
+    "from": "Assets/HeartRateBLE/AndroidBleGattBackend.cs.meta",
+    "to": "Packages/com.kaan.ble-sensors/Runtime/AndroidBleGattBackend.cs.meta",
+    "sha256": "62c727b7d338215a83a2e1b34dcfc0e3de48d9104de2dfe13ebe115c07e9fa35"
+  },
+  {
+    "from": "Assets/HeartRateBLE/BleConnection.cs",
+    "to": "Packages/com.kaan.ble-sensors/Runtime/BleConnection.cs",
+    "sha256": "9935e78b5e7595966f4853630dd244bf4dfb375ff125a815b00fcaf298b5ea23"
+  },
+  {
+    "from": "Assets/HeartRateBLE/BleConnection.cs.meta",
+    "to": "Packages/com.kaan.ble-sensors/Runtime/BleConnection.cs.meta",
+    "sha256": "147de829ca26d38eae332d81fb4810c119b1a5d70263f31ca4ee0cc9484eb30d"
+  },
+  {
+    "from": "Assets/HeartRateBLE/BleDeviceProfile.cs",
+    "to": "Packages/com.kaan.ble-sensors/Runtime/BleDeviceProfile.cs",
+    "sha256": "50c9630e2f39c8ed49c051ef1086ec704727acaf863fdfaaafcf93e50332bf2c"
+  },
+  {
+    "from": "Assets/HeartRateBLE/BleDeviceProfile.cs.meta",
+    "to": "Packages/com.kaan.ble-sensors/Runtime/BleDeviceProfile.cs.meta",
+    "sha256": "66ea7f57b6488b9c29b5810fd2e1219a73b697dee9e8fd2cd5956ccf23086fe5"
+  },
+  {
+    "from": "Assets/HeartRateBLE/BleGattQueue.cs",
+    "to": "Packages/com.kaan.ble-sensors/Runtime/BleGattQueue.cs",
+    "sha256": "408d7e57b110df0fe629ecd3dbe6584efbc2decf09b8fd59ac7417be3f36e8f9"
+  },
+  {
+    "from": "Assets/HeartRateBLE/BleGattQueue.cs.meta",
+    "to": "Packages/com.kaan.ble-sensors/Runtime/BleGattQueue.cs.meta",
+    "sha256": "617f58e11447da9c50b93b49c9d84aea875e5234ce925415a7b03721fe371ed0"
+  },
+  {
+    "from": "Assets/HeartRateBLE/CosinussMeasurements.cs",
+    "to": "Packages/com.kaan.ble-sensors/Runtime/CosinussMeasurements.cs",
+    "sha256": "a32ab741509d2b6ef2c13baf348b01b4177fd2f1aae67f9c5567bbca005f2d79"
+  },
+  {
+    "from": "Assets/HeartRateBLE/CosinussMeasurements.cs.meta",
+    "to": "Packages/com.kaan.ble-sensors/Runtime/CosinussMeasurements.cs.meta",
+    "sha256": "bcbb7545d175a93aacd74195f17581d42185ff8199c481a60fa36251cb8d2882"
+  },
+  {
+    "from": "Assets/HeartRateBLE/CosinussParsers.cs",
+    "to": "Packages/com.kaan.ble-sensors/Runtime/CosinussParsers.cs",
+    "sha256": "35f3d4d0f967d53264d727ff1c1194b8a540efc3ae6ee7c6daa522336181c8ff"
+  },
+  {
+    "from": "Assets/HeartRateBLE/CosinussParsers.cs.meta",
+    "to": "Packages/com.kaan.ble-sensors/Runtime/CosinussParsers.cs.meta",
+    "sha256": "64170780dba8ec230e1bf0f9206dad62e097d1847a65f7c8e3365609dad9bdf1"
+  },
+  {
+    "from": "Assets/HeartRateBLE/CosinussProfileDefaults.cs",
+    "to": "Packages/com.kaan.ble-sensors/Runtime/CosinussProfileDefaults.cs",
+    "sha256": "e44da2d5c049908d0b1526d846f3e5280dda1c16637cf403883ca1d7aac5123c"
+  },
+  {
+    "from": "Assets/HeartRateBLE/CosinussProfileDefaults.cs.meta",
+    "to": "Packages/com.kaan.ble-sensors/Runtime/CosinussProfileDefaults.cs.meta",
+    "sha256": "a3cfa0229504076b0aefd81f081306af5b39cce1932f52040a24ecd1d839291b"
+  },
+  {
+    "from": "Assets/HeartRateBLE/HeartRateBLE.cs",
+    "to": "Packages/com.kaan.ble-sensors/Runtime/HeartRateBLE.cs",
+    "sha256": "8fd97aafd580a17eb3a161afeabae6b8deb22d897de0846e1640115ec2ac4257"
+  },
+  {
+    "from": "Assets/HeartRateBLE/HeartRateBLE.cs.meta",
+    "to": "Packages/com.kaan.ble-sensors/Runtime/HeartRateBLE.cs.meta",
+    "sha256": "c078b4d911118e361e9160c30a480657ff6848d5e7b0c5d5ba39f52965680719"
+  },
+  {
+    "from": "Assets/HeartRateBLE/HeartRateParser.cs",
+    "to": "Packages/com.kaan.ble-sensors/Runtime/HeartRateParser.cs",
+    "sha256": "502865c3f5f0f11ab666e775e2e6eb905718684f231b196e8615e23dbd001c5f"
+  },
+  {
+    "from": "Assets/HeartRateBLE/HeartRateParser.cs.meta",
+    "to": "Packages/com.kaan.ble-sensors/Runtime/HeartRateParser.cs.meta",
+    "sha256": "db4b64221a87e25d80565619ec063c9c36e1763e5f969dd251731c0f230349ea"
+  },
+  {
+    "from": "Assets/HeartRateBLE/HeartRateUI.cs",
+    "to": "Packages/com.kaan.ble-sensors/Runtime/HeartRateUI.cs",
+    "sha256": "329154c1311148744f1cf6892606787763f507bb318751909602a86768397f1f"
+  },
+  {
+    "from": "Assets/HeartRateBLE/HeartRateUI.cs.meta",
+    "to": "Packages/com.kaan.ble-sensors/Runtime/HeartRateUI.cs.meta",
+    "sha256": "401448e766973f0405bacf05ceab0f57dd9ef0eed185bf5daf7011492d5e6d4c"
+  },
+  {
+    "from": "Assets/HeartRateBLE/SensorMeasurements.cs",
+    "to": "Packages/com.kaan.ble-sensors/Runtime/SensorMeasurements.cs",
+    "sha256": "0dfbbeac9c87a4477870f1de56c2b8f499c5cf259d82bef40cef24fc46f4d8c7"
+  },
+  {
+    "from": "Assets/HeartRateBLE/SensorMeasurements.cs.meta",
+    "to": "Packages/com.kaan.ble-sensors/Runtime/SensorMeasurements.cs.meta",
+    "sha256": "279b5a844071100a174aa2df59f449e78deec34f5faa6a8e980e24e18005ba3e"
+  },
+  {
+    "from": "Assets/Plugins/Android/cosinuss-gatt.jar",
+    "to": "Packages/com.kaan.ble-sensors/Runtime/Plugins/Android/cosinuss-gatt.jar",
+    "sha256": "07e982ea688f9c1591c9879cf37f1686ae1d28ddec0f1957ec63963afce92615"
+  },
+  {
+    "from": "Assets/Plugins/Android/cosinuss-gatt.jar.meta",
+    "to": "Packages/com.kaan.ble-sensors/Runtime/Plugins/Android/cosinuss-gatt.jar.meta",
+    "sha256": "9ce4c75a1b52fe328a83f842d27eff5f8f3bbbc86bfe70f31b973c57fd6ab3a5"
+  }
+]

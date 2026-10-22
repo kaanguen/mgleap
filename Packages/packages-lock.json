@@ -1,5 +1,16 @@
 {
   "dependencies": {
+    "com.kaan.ble-sensors": {
+      "version": "file:com.kaan.ble-sensors",
+      "depth": 0,
+      "source": "embedded",
+      "dependencies": {
+        "com.velorexe.androidbluetoothlowenergy": "0.0.6",
+        "com.unity.textmeshpro": "3.0.7",
+        "com.unity.ugui": "1.0.0",
+        "com.unity.modules.androidjni": "1.0.0"
+      }
+    },
     "com.magicleap.unitysdk": {
       "version": "file:/Users/kaan/MagicLeap/tools/unity/v2.6.0/com.magicleap.unitysdk.tgz",
       "depth": 0,

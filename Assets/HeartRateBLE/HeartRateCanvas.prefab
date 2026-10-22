@@ -1386,9 +1386,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f92ea5ca7783d4b17846d57e3a334570, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  profile: {fileID: 11400000, guid: 6892d899ab9794d16ac23beab6bf6216, type: 2}
+  scanSeconds: 15
+  connectTimeoutSeconds: 90
   serviceUuid: 180d
   characteristicUuid: 2a37
-  scanSeconds: 15
 --- !u!114 &5065143047297316007
 MonoBehaviour:
   m_ObjectHideFlags: 0

@@ -1,0 +1,109 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 958275a1cd9a44840b57ddb1adee0a55, type: 3}
+  m_Name: Cosinuss
+  m_EditorClassIdentifier: 
+  nameContains:
+  - tree
+  - thre
+  deviceId: 
+  channels:
+  - id: model
+    label: Modell
+    serviceUuid: 180a
+    characteristicUuid: 2a24
+    format: 4
+    read: 1
+    subscribe: 0
+    updateMode: 1
+    staleSeconds: 15
+  - id: firmware
+    label: Firmware
+    serviceUuid: 180a
+    characteristicUuid: 2a26
+    format: 4
+    read: 1
+    subscribe: 0
+    updateMode: 1
+    staleSeconds: 15
+  - id: manufacturer
+    label: Hersteller
+    serviceUuid: 180a
+    characteristicUuid: 2a29
+    format: 4
+    read: 1
+    subscribe: 0
+    updateMode: 1
+    staleSeconds: 15
+  - id: software
+    label: Software
+    serviceUuid: 180a
+    characteristicUuid: 2a28
+    format: 4
+    read: 1
+    subscribe: 0
+    updateMode: 1
+    staleSeconds: 15
+  - id: hardware
+    label: Hardware
+    serviceUuid: 180a
+    characteristicUuid: 2a27
+    format: 4
+    read: 1
+    subscribe: 0
+    updateMode: 1
+    staleSeconds: 15
+  - id: heartRate
+    label: Herzfrequenz
+    serviceUuid: 180d
+    characteristicUuid: 2a37
+    format: 0
+    read: 0
+    subscribe: 1
+    updateMode: 1
+    staleSeconds: 10
+  - id: temperature
+    label: Temperatur
+    serviceUuid: 1809
+    characteristicUuid: 2a1c
+    format: 1
+    read: 0
+    subscribe: 1
+    updateMode: 2
+    staleSeconds: 35
+  - id: spo2
+    label: SpO2
+    serviceUuid: 1822
+    characteristicUuid: 2a5f
+    format: 2
+    read: 0
+    subscribe: 1
+    updateMode: 1
+    staleSeconds: 15
+  - id: battery
+    label: Akku
+    serviceUuid: 180f
+    characteristicUuid: 2a19
+    format: 3
+    read: 1
+    subscribe: 1
+    updateMode: 1
+    staleSeconds: 300
+  - id: quality
+    label: "Signalqualit\xE4t"
+    serviceUuid: 0000a000-1212-efde-1523-785feabcd123
+    characteristicUuid: 0000a002-1212-efde-1523-785feabcd123
+    format: 5
+    read: 0
+    subscribe: 1
+    updateMode: 1
+    staleSeconds: 15
