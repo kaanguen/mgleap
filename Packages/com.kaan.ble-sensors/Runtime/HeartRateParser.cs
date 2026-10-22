@@ -16,11 +16,14 @@ public static class HeartRateParser
     // Bluetooth SIG Heart Rate Measurement (2A37), little endian.
     public static Reading ParseMeasurement(byte[] packet)
     {
+
+    
         if (packet == null || packet.Length < 2)
             throw new FormatException("Herzfrequenz-Paket zu kurz.");
         int flags = packet[0];
         if ((flags & 0xE0) != 0)
             throw new FormatException("Unbekannte Herzfrequenz-Flags.");
+
 
         bool sixteenBit = (flags & 1) != 0;
         int offset = sixteenBit ? 3 : 2;

@@ -28,14 +28,23 @@ public class SensorMeasurements : MonoBehaviour
     public string RrIntervals { get; private set; } = "";
     public string Details {
         get {
-            var text=new StringBuilder(); bool hasPlx=false;
+            string temperature="—", spo2="—";
+            bool hasTemperature=false, hasSpo2=false;
             foreach (var v in ordered) {
-                if (v==heartRate) continue;
-                text.Append(v.Channel.label).Append(": ").Append(v.Text).Append('\n');
-                hasPlx |= v.Channel.format==BleValueFormat.PulseOximeter;
+                if (!hasTemperature && v.Channel.format==BleValueFormat.Temperature) {
+                    temperature=v.Text;
+                    hasTemperature=true;
+                } else if (!hasSpo2 && v.Channel.format==BleValueFormat.PulseOximeter) {
+                    int perfusion=v.Text.IndexOf(" | Perfusion:",StringComparison.Ordinal);
+                    spo2=perfusion<0 ? v.Text : v.Text.Substring(0,perfusion);
+                    if (v.Text.Contains("(Status prüfen)")) spo2+=" · Status prüfen";
+                    hasSpo2=true;
+                }
             }
-            if (hasPlx) text.Append("SpO2-Format: ").Append(EncodingLabel()).Append('\n');
-            return text.Append("Adresse: ").Append(string.IsNullOrEmpty(address) ? "—" : address).ToString();
+            return "<size=80%><color=#AAB8C7><b>TEMPERATUR</b></color></size>\n"
+                +"<size=130%><color=#F5F8FF>"+temperature+"</color></size>\n\n"
+                +"<size=80%><color=#AAB8C7><b>SpO2</b></color></size>\n"
+                +"<size=130%><color=#F5F8FF>"+spo2+"</color></size>";
         }
     }
     protected virtual void OnEnable() {

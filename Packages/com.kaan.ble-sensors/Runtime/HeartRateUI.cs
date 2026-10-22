@@ -29,10 +29,30 @@ public sealed class HeartRateUI : MonoBehaviour
         if (sensor == null) sensor = gameObject.AddComponent<SensorMeasurements>();
         if (sensorDetailsText != null)
         {
-            sensorDetailsText.richText = false;
+            sensorDetailsText.richText = true;
             sensorDetailsText.enableAutoSizing = true;
-            sensorDetailsText.fontSizeMin = 14;
-            sensorDetailsText.fontSizeMax = 22;
+            sensorDetailsText.fontSizeMin = 20;
+            sensorDetailsText.fontSizeMax = 24;
+            sensorDetailsText.alignment = TextAlignmentOptions.Center;
+        }
+        heartRateText.richText = true;
+        heartRateText.fontSize = 72;
+        heartRateText.alignment = TextAlignmentOptions.Center;
+        var heartRateLayout=heartRateText.GetComponent<UnityEngine.UI.LayoutElement>();
+        if (heartRateLayout != null)
+        {
+            heartRateLayout.minHeight=110;
+            heartRateLayout.preferredHeight=110;
+        }
+        var title=transform.Find("Panel/Title");
+        if (title != null)
+        {
+            var titleText=title.GetComponent<TMP_Text>();
+            if (titleText != null)
+            {
+                titleText.text="VITALWERTE";
+                titleText.fontSize=30;
+            }
         }
         sensor.Changed += Refresh;
         bluetooth.Changed += Refresh;
@@ -56,9 +76,9 @@ public sealed class HeartRateUI : MonoBehaviour
     }
     void Refresh()
     {
-        statusText.text = bluetooth.Status
-            + (string.IsNullOrEmpty(sensor.RrIntervals) ? "" : "\nRR: " + sensor.RrIntervals);
-        heartRateText.text = sensor.Measurement;
+        statusText.text = bluetooth.Status;
+        heartRateText.text = "<size=40%><color=#AAB8C7><b>HERZFREQUENZ</b></color></size>\n"
+            +sensor.Measurement;
         if (sensorDetailsText != null && sensor != null) sensorDetailsText.text = sensor.Details;
         var names = new List<string>();
         for (int i = 0; i < bluetooth.DeviceIds.Count; i++)

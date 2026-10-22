@@ -37,7 +37,7 @@ public static class HeartRateCanvasSetup
             var ui=root.GetComponent<HeartRateUI>();
             if (ui.sensor==null || ui.sensorDetailsText==null || ui.sensor.bluetooth!=ui.bluetooth)
                 throw new InvalidOperationException("Sensorwerte-Verknüpfung fehlt");
-            File.WriteAllText("BLE-Delivery/Sensorwerte-Ergebnis.txt","Prefab und SampleScene erweitert. SensorDetailsText und CosinussMeasurements verknüpft. Canvas 1000 x 1050.\n");
+            File.WriteAllText("BLE-Delivery/Sensorwerte-Ergebnis.txt","Prefab und SampleScene erweitert. HeartRate, Temperatur und SpO2 werden angezeigt. Canvas 1000 x 920.\n");
             AssetDatabase.DeleteAsset(request);
             Debug.Log("[Cosinuss] Sensorwerte-Canvas aktualisiert.");
         } catch(Exception e) { File.WriteAllText("BLE-Delivery/Sensorwerte-Fehler.txt",e.ToString()); Debug.LogException(e); }
@@ -52,14 +52,14 @@ public static class HeartRateCanvasSetup
         ui.sensorDetailsText=existing!=null ? existing.GetComponent<TMP_Text>() : Label(panel,"SensorDetailsText",sensor.Details,22,300);
         ui.sensorDetailsText.transform.SetSiblingIndex(ui.heartRateText.transform.GetSiblingIndex()+1);
         ui.sensorDetailsText.text=sensor.Details;
-        ui.sensorDetailsText.fontSize=22; ui.sensorDetailsText.richText=false;
-        ui.sensorDetailsText.alignment=TextAlignmentOptions.TopLeft; ui.sensorDetailsText.raycastTarget=false;
-        Height(ui.sensorDetailsText.gameObject,300);
+        ui.sensorDetailsText.fontSize=24; ui.sensorDetailsText.richText=true;
+        ui.sensorDetailsText.alignment=TextAlignmentOptions.Center; ui.sensorDetailsText.raycastTarget=false;
+        Height(ui.sensorDetailsText.gameObject,180);
         ui.sensorDetailsText.gameObject.layer=root.layer;
-        ui.heartRateText.fontSize=60; Height(ui.heartRateText.gameObject,80);
+        ui.heartRateText.fontSize=72; Height(ui.heartRateText.gameObject,110);
         ui.statusText.fontSize=22;
-        var title=panel.Find("Title").GetComponent<TMP_Text>(); title.text="COSINUSS · SENSORWERTE";
-        ((RectTransform)root.transform).sizeDelta=new Vector2(1000,1050);
+        var title=panel.Find("Title").GetComponent<TMP_Text>(); title.text="VITALWERTE"; title.fontSize=30;
+        ((RectTransform)root.transform).sizeDelta=new Vector2(1000,920);
         EditorUtility.SetDirty(ui); EditorUtility.SetDirty(sensor);
     }
 
