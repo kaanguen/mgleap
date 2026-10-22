@@ -1,1 +1,0 @@
-Der simulierte Editor-Test wurde nicht erfolgreich ausgeführt: Das Anlegen eines virtuellen Gamepads scheiterte an einem Input-System-Layoutfehler. Der Test und seine automatische Registrierung wurden entfernt. Die C#-Kompilierung war erfolgreich. Kein Hardwaretest durchgeführt.
