@@ -648,7 +648,6 @@ public class MarkerAndAnchorTracker : MonoBehaviour
     // Advance along the path and apply heading, ground height and foot offset.
     private void UpdateRunningCharacter(MarkerState marker, Transform origin)
     {
-        bool wasFinished = marker.TrackPreview.IsFinished;
         Vector3 groundPosition = marker.TrackPreview.AdvanceRun(Time.deltaTime);
 
         ARPlane plane = FindClosestPlane(groundPosition, 0.5f, true);
@@ -667,9 +666,6 @@ public class MarkerAndAnchorTracker : MonoBehaviour
         marker.Instance.transform.position = GetGroundedPosition(groundPosition, contactOffset, _characterGroundClearance);
 
         marker.PlacementSessionPosition = origin.InverseTransformPoint(groundPosition);
-        if (!wasFinished && marker.TrackPreview.IsFinished && marker.CharacterUi != null &&
-            marker.CharacterUi.IsBoundTo(marker.TrackPreview))
-            marker.CharacterUi.StopAtTrackFinish();
     }
 
     // Find and cache the shared runner controls in the scene.

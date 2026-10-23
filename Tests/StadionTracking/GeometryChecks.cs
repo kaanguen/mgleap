@@ -9,7 +9,7 @@ internal static class GeometryChecks
         if (!condition) throw new Exception(label);
     }
 
-    // Check track geometry, map projection, pause and the exact 400-metre finish.
+    // Check track geometry, map projection, continuous laps and pause/resume.
     public static void Main()
     {
 
@@ -72,18 +72,41 @@ internal static class GeometryChecks
             Require(Math.Abs(run.TravelledMetres - 30) < 1e-8, "frame-rate-independent running");
             run.Advance(0, 5);
             Require(Math.Abs(run.TravelledMetres - 30) < 1e-8, "pause keeps distance");
+            Require(run.CurrentSpeed == 0, "paused speed is zero");
             run.Advance(6, 100);
-            Require(run.TravelledMetres == 400 && run.IsFinished, "stop exactly at 400m");
+            Require(Math.Abs(run.TravelledMetres - 630) < 1e-8, "continues past 400m");
+            Require(run.CompletedLaps == 1 && run.CurrentLap == 2, "second lap displayed");
+            Require(run.CurrentSpeed == 6, "current speed follows applied movement");
             run.Advance(6, 10);
-            Require(run.TravelledMetres == 400, "finished run cannot continue");
-            var end = track.Evaluate(8, 125 + run.TravelledMetres);
-            Require(Distance(end, track.Evaluate(8, 525)) < 1e-8, "400m finish on outer lane");
+            Require(Math.Abs(run.TravelledMetres - 690) < 1e-8, "resume preserves distance");
+
+            var boundaryRun = new StadiumRunProgress();
+            Require(boundaryRun.CurrentLap == 1 && boundaryRun.CompletedLaps == 0, "start on first lap");
+            for (int frame = 0; frame < framesPerSecond * 200; frame++)
+                boundaryRun.Advance(6, 1.0 / framesPerSecond);
+            Require(boundaryRun.CompletedLaps == 3 && boundaryRun.CurrentLap == 4, "exact multi-lap boundary");
+            Require(boundaryRun.MetresInCurrentLap < 1e-8, "lap distance wraps at boundary");
+        }
+        for (int lane = 1; lane <= 8; lane++)
+        {
+            double length = track.Length(lane);
+            var run = new StadiumRunProgress(length);
+            run.Advance(1, length - 0.001);
+            Require(run.CompletedLaps == 0, "no early lap completion");
+            run.Advance(1, 0.002);
+            Require(run.CompletedLaps == 1 && run.CurrentLap == 2, "lane-specific lap length");
+            run.Advance(1, length * 4);
+            Require(run.CompletedLaps == 5 && run.CurrentLap == 6, "multiple laps in one frame");
+            var end = track.Evaluate(lane, 125 + run.TravelledMetres);
+            Require(Distance(end, track.Evaluate(lane, 125.001)) < 1e-8, "position wraps after complete laps");
         }
         var invalidRun = new StadiumRunProgress();
         invalidRun.Advance(double.NaN, 1);
         invalidRun.Advance(3, double.PositiveInfinity);
         invalidRun.Advance(-3, 1);
+        invalidRun.Advance(double.MaxValue, double.MaxValue);
         Require(invalidRun.TravelledMetres == 0, "invalid input does not poison distance");
+        Require(invalidRun.CurrentSpeed == 0, "invalid movement reports zero current speed");
 
         for (int lane = 1; lane <= 8; lane++)
         {
@@ -96,7 +119,7 @@ internal static class GeometryChecks
                 "map outer curve uses single-lane radius");
             Require(Math.Abs(right.V - 0.5) < 1e-10, "map right curve height");
         }
-        Console.WriteLine("PASS: 8 lanes, 16000 path samples, seams, heading, wrap, 80 global projections; running, pause and exact finish at 30/60/120 FPS.");
+        Console.WriteLine("PASS: 8 lanes, 16000 path samples, seams, heading, wrap, 80 global projections; continuous laps, current speed and pause/resume at 30/60/120 FPS.");
     }
 
     private static double Distance(StadiumTrackGeometry.Sample a, StadiumTrackGeometry.Sample b) =>

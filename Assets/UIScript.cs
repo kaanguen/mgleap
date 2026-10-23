@@ -16,6 +16,12 @@ public class UIScript : MonoBehaviour
     [SerializeField]
     private TMP_Text textMesh;
 
+    [SerializeField] private TMP_Text currentSpeedText;
+    [SerializeField] private TMP_Text currentLapText;
+    [SerializeField] private TMP_Text completedLapsText;
+    [SerializeField] private TMP_Text statusText;
+    private float nextStatsRefresh;
+
     [SerializeField]
     private Animator avatar;
 
@@ -75,14 +81,6 @@ public class UIScript : MonoBehaviour
     [SerializeField]
     private string speedParameter = "speed";
 
-    public void StopAtTrackFinish()
-    {
-        if (slider == null)
-            return;
-        slider.value = slider.minValue;
-        UpdateAnimation(slider.value);
-    }
-
     // Initialize the canvas, speed slider and XR interaction.
     private void Start()
     {
@@ -130,19 +128,43 @@ public class UIScript : MonoBehaviour
     // Send slider input to the bound runner and display its requested speed.
     private void UpdateAnimation(float value)
     {
-        float fraction = runner != null && !runner.IsFinished && slider != null ? slider.normalizedValue : 0f;
+        float fraction = runner != null && slider != null ? slider.normalizedValue : 0f;
         bool isRunning = fraction > 0f;
         if (runner != null)
             runner.SetRequestedSpeed(fraction);
 
-        if (textMesh != null)
-            textMesh.text = runner == null ? "Warte auf Avatar" : $"Speed: {fraction * runner.SpeedAtFullSlider:F2} m/s";
+        RefreshStats();
 
-        if (avatar != null)
+        if (avatar != null && runner == null)
         {
             if (hasSpeedParameter) avatar.SetFloat(speedParameter, fraction);
             if (hasRunningParameter) avatar.SetBool(runningParameter, isRunning);
         }
+    }
+
+    private void RefreshStats()
+    {
+        bool connected = runner != null;
+        if (textMesh != null)
+            textMesh.text = connected
+                ? $"ZIELTEMPO  {runner.RequestedSpeedFraction * runner.SpeedAtFullSlider:F2} m/s"
+                : "ZIELTEMPO  -- m/s";
+        if (currentSpeedText != null)
+            currentSpeedText.text = connected
+                ? $"<size=45%>AKTUELLES TEMPO</size>\n{runner.CurrentSpeed:F2} <size=55%>m/s</size>"
+                : "<size=45%>AKTUELLES TEMPO</size>\n-- <size=55%>m/s</size>";
+        if (currentLapText != null)
+            currentLapText.text = connected
+                ? $"<size=55%>AKTUELLE RUNDE</size>\n{runner.CurrentLap}"
+                : "<size=55%>AKTUELLE RUNDE</size>\n--";
+        if (completedLapsText != null)
+            completedLapsText.text = connected
+                ? $"<size=55%>GELAUFENE RUNDEN</size>\n{runner.CompletedLaps}"
+                : "<size=55%>GELAUFENE RUNDEN</size>\n--";
+        if (statusText != null)
+            statusText.text = !connected ? "RUNNER STATS  /  WARTE AUF AVATAR"
+                : $"RUNNER STATS  /  {(runner.CurrentSpeed > 0 ? "LÄUFT" : "PAUSE")}  /  BAHN {runner.Lane}";
+        nextStatsRefresh = Time.unscaledTime + 0.1f;
     }
 
     // Gently follow the user and clear references to a destroyed runner.
@@ -206,6 +228,8 @@ public class UIScript : MonoBehaviour
             if (runnerMap != null)
                 runnerMap.BindRunner(null);
         }
+        if (Time.unscaledTime >= nextStatsRefresh)
+            RefreshStats();
     }
 
     // Attach the position overlay to the existing stadium image.

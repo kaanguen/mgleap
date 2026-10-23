@@ -8,18 +8,20 @@ namespace StadionTracking
     {
 
         private readonly StadiumTrackGeometry _geometry = new StadiumTrackGeometry();
-        private readonly StadiumRunProgress _run = new StadiumRunProgress();
+        private StadiumRunProgress _run = new StadiumRunProgress();
         private float _animationSpeedFraction;
 
         public float RequestedSpeedFraction { get; private set; }
         public float SpeedAtFullSlider => Mathf.Max(0.1f, _settings.SpeedAtFullSlider);
 
-        // Store this runner's slider input; finished runs remain stopped.
+        // Store this runner's slider input; zero pauses without resetting laps.
         public void SetRequestedSpeed(float fraction)
         {
-            RequestedSpeedFraction = _run.IsFinished ? 0f : Mathf.Clamp01(fraction);
+            RequestedSpeedFraction = float.IsNaN(fraction) || float.IsInfinity(fraction) ? 0f : Mathf.Clamp01(fraction);
         }
-        public bool IsFinished => _run.IsFinished;
+        public double CurrentSpeed => _run.CurrentSpeed;
+        public long CurrentLap => _run.CurrentLap;
+        public long CompletedLaps => _run.CompletedLaps;
         public double TravelledMetres => _run.TravelledMetres;
 
         public Vector2 TrackLocalPosition
@@ -39,9 +41,14 @@ namespace StadionTracking
         private Animator _animator;
         private bool _hasRunningParameter;
         private bool _hasSpeedParameter;
+        private bool _hasPlaybackRateParameter;
+        private float _walkSpeed = 1.5f;
+        private float _runSpeed = 3f;
+        private float _sprintSpeed = 6f;
 
         private static readonly int RunningParameter = Animator.StringToHash("isRunning");
         private static readonly int SpeedParameter = Animator.StringToHash("speed");
+        private static readonly int PlaybackRateParameter = Animator.StringToHash("locomotionRate");
         private double _entryMetres;
 
         public int Lane { get; private set; }
@@ -97,6 +104,8 @@ namespace StadionTracking
                 Debug.LogWarning($"[StadiumTracking] Spawn is outside the oval lanes; projecting onto configured lane {Lane}.");
             }
 
+            _run = new StadiumRunProgress(_geometry.Length(Lane));
+
             _entryMetres = _geometry.Project(Lane, localSpawn.x, localSpawn.z);
             entryGroundPosition = transform.TransformPoint(Position(_geometry.Evaluate(Lane, _entryMetres)));
             if (Vector3.Distance(entryGroundPosition, spawnGroundPosition) > Mathf.Max(0.1f, settings.MaxEntryCorrection))
@@ -118,12 +127,12 @@ namespace StadionTracking
                 material = _ownedMaterial = new Material(shader);
             }
 
-            _route = CreateLine("400m route", material, settings.RouteColor, settings.LineWidth);
+            _route = CreateLine("Lap route", material, settings.RouteColor, settings.LineWidth);
             _arrow = CreateLine("Running direction", material, settings.DirectionColor, settings.LineWidth * 1.5f);
             DrawRoute();
             Debug.Log($"[StadiumTracking] {settings.AnchorMode}: lane {Lane}, " +
                 $"entry {_entryMetres:F2} m, lap {_geometry.Length(Lane):F3} m. " +
-                "Cyan = 400 metres, yellow = running direction. Use the speed slider to start; zero pauses.");
+                "Cyan = one full lap, yellow = running direction. Use the speed slider to start; zero pauses.");
             return true;
         }
 
@@ -143,43 +152,75 @@ namespace StadionTracking
             {
 
                 _animator = animator;
-                _hasRunningParameter = _hasSpeedParameter = false;
+                _hasRunningParameter = _hasSpeedParameter = _hasPlaybackRateParameter = false;
                 foreach (AnimatorControllerParameter parameter in animator.parameters)
                 {
                     _hasRunningParameter |= parameter.nameHash == RunningParameter && parameter.type == AnimatorControllerParameterType.Bool;
                     _hasSpeedParameter |= parameter.nameHash == SpeedParameter && parameter.type == AnimatorControllerParameterType.Float;
+                    _hasPlaybackRateParameter |= parameter.nameHash == PlaybackRateParameter && parameter.type == AnimatorControllerParameterType.Float;
                 }
+                CalibrateLocomotion(animator);
             }
 
             animator.applyRootMotion = false;
+            LocomotionTiming.Evaluate(_animationSpeedFraction * SpeedAtFullSlider,
+                _walkSpeed, _runSpeed, _sprintSpeed, out float blend, out float playbackRate);
             if (_hasRunningParameter)
                 animator.SetBool(RunningParameter, _animationSpeedFraction > 0f);
             if (_hasSpeedParameter)
-                animator.SetFloat(SpeedParameter, _animationSpeedFraction);
+                animator.SetFloat(SpeedParameter, _hasPlaybackRateParameter ? blend : _animationSpeedFraction);
+            if (_hasPlaybackRateParameter)
+                animator.SetFloat(PlaybackRateParameter, playbackRate);
         }
 
-        // Advance toward 400 metres and return the next world-space ground position.
+        private void CalibrateLocomotion(Animator animator)
+        {
+            // Root motion is disabled for placement, but imported clip velocities still
+            // tell us the speed at which each gait's steps were recorded.
+            _walkSpeed = 1.5f;
+            _runSpeed = 3f;
+            _sprintSpeed = 6f;
+            if (animator.runtimeAnimatorController == null)
+                return;
+            foreach (AnimationClip clip in animator.runtimeAnimatorController.animationClips)
+            {
+                Vector3 velocity = clip.averageSpeed;
+                float speed = new Vector2(velocity.x, velocity.z).magnitude;
+                if (float.IsNaN(speed) || float.IsInfinity(speed) || speed < 0.1f)
+                    continue; // In-place clips need the nominal gait speeds above.
+                switch (clip.name)
+                {
+                    case "walking": _walkSpeed = speed; break;
+                    case "runninig": _runSpeed = speed; break;
+                    case "sprint": _sprintSpeed = speed; break;
+                }
+            }
+            // Preserve a valid ordering if an imported clip has no useful trajectory.
+            if (_walkSpeed >= _runSpeed || _runSpeed >= _sprintSpeed)
+            {
+                _walkSpeed = 1.5f;
+                _runSpeed = 3f;
+                _sprintSpeed = 6f;
+            }
+        }
+
+        // Advance continuously around the selected lane and return the ground position.
         public Vector3 AdvanceRun(float deltaTime)
         {
-            bool wasFinished = _run.IsFinished;
             float fraction = RequestedSpeedFraction;
             _run.Advance(fraction * Mathf.Max(0.1f, _settings.SpeedAtFullSlider), deltaTime);
-            _animationSpeedFraction = _run.IsFinished ? 0f : fraction;
-            if (_run.IsFinished)
-                RequestedSpeedFraction = 0f;
-            if (!wasFinished && _run.IsFinished)
-                Debug.Log($"[StadiumTracking] Finished 400 metres on lane {Lane}. Avatar stopped.");
+            _animationSpeedFraction = (float)(_run.CurrentSpeed / SpeedAtFullSlider);
             return transform.TransformPoint(Position(_geometry.Evaluate(Lane, _entryMetres + _run.TravelledMetres)));
         }
 
-        // Draw 400 metres from the entry point and a short direction arrow.
+        // Draw a complete lap from the entry point and a short direction arrow.
         private void DrawRoute()
         {
 
             const int segments = 800;
             _route.positionCount = segments + 1;
             for (int i = 0; i <= segments; i++)
-                _route.SetPosition(i, Raised(_geometry.Evaluate(Lane, _entryMetres + 400.0 * i / segments)));
+                _route.SetPosition(i, Raised(_geometry.Evaluate(Lane, _entryMetres + _geometry.Length(Lane) * i / segments)));
 
             StadiumTrackGeometry.Sample tipSample = _geometry.Evaluate(Lane, _entryMetres + 3);
             Vector3 tip = Raised(tipSample);
