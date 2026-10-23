@@ -9,6 +9,7 @@ using MagicLeap.Android;
 using MagicLeap.OpenXR.Subsystems;
 using UnityEngine.XR.ARSubsystems;
 using UnityEngine.XR.Management;
+using StadionTracking;
 
 public class MarkerAndAnchorTracker : MonoBehaviour
 {
@@ -34,10 +35,17 @@ public class MarkerAndAnchorTracker : MonoBehaviour
     [Header("Character placement")]
     [SerializeField, Min(0f), Tooltip("Horizontal spawn distance in front of the user's current view, in meters.")]
     private float _characterDistanceFromUser = 5f;
+    [SerializeField, Min(0f), Tooltip("If the requested spawn is not covered by a floor polygon, allow an initial spawn on a confirmed floor boundary this many horizontal meters away. Zero disables this fallback.")]
+    private float _maxSpawnFloorAdjustment = 2f;
     [SerializeField, Tooltip("Optional gap between the character's soles and the detected surface, in meters.")]
     private float _characterGroundClearance = 0f;
     [SerializeField, Min(0f), Tooltip("Response time for floor height and tilt corrections, in seconds. Zero disables smoothing.")]
     private float _planeSmoothingTime = 0.25f;
+
+    [Header("Stadium route and running")]
+    [SerializeField] private StadiumPreviewSettings _stadiumPreview = new StadiumPreviewSettings();
+    [SerializeField, Tooltip("Optional shared RunnerStatsCanvas UI. If empty, it is found in the active scene when an avatar spawns.")]
+    private UIScript _runnerStatsCanvas;
     [Header("Plane diagnostics")]
     [SerializeField] private bool _logPlaneDiagnostics = true;
     [SerializeField, Min(1f)] private float _planeDiagnosticsInterval = 5f;
@@ -72,6 +80,11 @@ public class MarkerAndAnchorTracker : MonoBehaviour
         public Animator Animator;
         public AnimatorCullingMode OriginalCullingMode;
         public Renderer[] Renderers;
+
+        public StadiumTrackPreview TrackPreview;
+        public UIScript CharacterUi;
+
+        public float NextPlacementStatusTime;
     }
 
     private sealed class SmoothedPlane
@@ -80,12 +93,13 @@ public class MarkerAndAnchorTracker : MonoBehaviour
         public Transform Visual;
         public MeshFilter Filter;
         public MeshRenderer Renderer;
-        // Store filtering state in session space so origin changes do not cause lag.
+
         public Vector3 ReferencePoint;
         public Vector3 Normal;
         public bool FloorInitialized;
     }
 
+    // Initialize marker detection and floor tracking.
     private void Start()
     {
         if (_xrOrigin == null)
@@ -148,6 +162,7 @@ public class MarkerAndAnchorTracker : MonoBehaviour
         InitializePlaneDetection();
     }
 
+    // Store detected marker poses and update the floor query.
     private void Update()
     {
         UpdatePlaneQuery();
@@ -172,7 +187,7 @@ public class MarkerAndAnchorTracker : MonoBehaviour
                 existingMarker.ReportedLength = data.MarkerLength;
                 existingMarker.LastSeenTime = Time.unscaledTime;
                 existingMarker.PoseSamples++;
-                // Refine the surface match without spawning another marker object.
+
                 if ((existingMarker.SessionPosition - pose.position).sqrMagnitude > 0.000025f)
                 {
                     existingMarker.SessionPosition = pose.position;
@@ -189,12 +204,17 @@ public class MarkerAndAnchorTracker : MonoBehaviour
                 PoseSamples = 1
             };
             _markersById.Add(markerId, state);
+            Debug.Log($"[MarkerPlacement] Marker {markerId} detected. Waiting for a floor at the avatar spawn target.");
             _planeSelectionDirty = true;
         }
     }
 
     private void OnDestroy()
     {
+
+        foreach (MarkerState marker in _markersById.Values)
+            if (marker.TrackPreview != null)
+                Destroy(marker.TrackPreview.gameObject);
         foreach (SmoothedPlane state in _smoothedPlanes.Values)
             if (state.Visual != null)
                 Destroy(state.Visual.gameObject);
@@ -211,14 +231,13 @@ public class MarkerAndAnchorTracker : MonoBehaviour
 
     private void InitializePlaneDetection()
     {
-        // ARPlaneManager manages planes reported by the native subsystem.
+
         if (_planeManager == null)
             _planeManager = _xrOrigin.GetComponent<ARPlaneManager>();
-        // Start scanning only after a marker has been stored.
+
         if (_planeManager != null)
             _planeManager.enabled = false;
 
-        // Check that the Magic Leap plane provider is enabled.
         var feature = OpenXRSettings.Instance.GetFeature<MagicLeapPlanesFeature>();
         if (_planeManager == null || _planeManager.planePrefab == null ||
             feature == null || !feature.enabled)
@@ -231,9 +250,8 @@ public class MarkerAndAnchorTracker : MonoBehaviour
         if (!ValidatePlanePrefab())
             return;
 
-        // Request horizontal and vertical surfaces.
         _planeManager.requestedDetectionMode = PlaneDetectionMode.Horizontal | PlaneDetectionMode.Vertical;
-        // Process new, updated, or removed planes.
+
         _planeManager.planesChanged += OnPlanesChanged;
         _planeDetectionConfigured = true;
     }
@@ -267,12 +285,12 @@ public class MarkerAndAnchorTracker : MonoBehaviour
         return true;
     }
 
+    // Search for native floor surfaces around markers and avatars.
     private void UpdatePlaneQuery()
     {
         if (!_planeDetectionConfigured || _planeManager == null || _markersById.Count == 0)
             return;
 
-        // Permission is granted externally; never open a permission prompt here.
         _spatialMappingGranted = Permissions.CheckPermission(Permissions.SpatialMapping);
         if (!_spatialMappingGranted)
         {
@@ -281,7 +299,6 @@ public class MarkerAndAnchorTracker : MonoBehaviour
             return;
         }
 
-        // Wait until the Magic Leap plane subsystem is loaded.
         var loader = XRGeneralSettings.Instance?.Manager?.activeLoader;
         if (!(loader?.GetLoadedSubsystem<XRPlaneSubsystem>() is MLXrPlaneSubsystem))
         {
@@ -289,7 +306,6 @@ public class MarkerAndAnchorTracker : MonoBehaviour
             return;
         }
 
-        // Include the avatar's target so native floor detection also covers the spawn area.
         bool first = true;
         var bounds = new Bounds();
         Transform origin = _xrOrigin.CameraFloorOffsetObject.transform;
@@ -306,21 +322,20 @@ public class MarkerAndAnchorTracker : MonoBehaviour
             bounds.Encapsulate(marker.Instance != null ? marker.PlacementSessionPosition : spawnTarget);
         }
 
-        // Configure native detection; this script does not detect surfaces itself.
         MLXrPlaneSubsystem.Query = new MLXrPlaneSubsystem.PlanesQuery
         {
             Flags = _planeManager.requestedDetectionMode.ToMLXrQueryFlags() |
                 MLXrPlaneSubsystem.MLPlanesQueryFlags.SemanticAll,
             BoundsCenter = bounds.center,
             BoundsRotation = Quaternion.identity,
-            // Room-scale floor scanning must extend beyond the marker neighborhood.
+
             BoundsExtents = bounds.extents + (_markersOnFloor
                 ? new Vector3(_floorSearchExtent, _floorSearchVerticalExtent, _floorSearchExtent)
                 : Vector3.one * _planeQueryPadding),
             MaxResults = (uint)Mathf.Max(1, _maxPlaneResults),
             MinPlaneArea = Mathf.Max(0.04f, _minPlaneArea)
         };
-        // Let ARPlaneManager create and update plane prefab instances.
+
         _planeManager.enabled = true;
     }
 
@@ -329,9 +344,10 @@ public class MarkerAndAnchorTracker : MonoBehaviour
         _planeSelectionDirty = true;
     }
 
+    // Refresh floor visuals and apply avatar placement after tracking updates.
     private void LateUpdate()
     {
-        // Match after both marker poses and native plane boundaries have updated.
+
         if (!_planeDetectionConfigured || _planeManager == null)
             return;
 
@@ -341,8 +357,6 @@ public class MarkerAndAnchorTracker : MonoBehaviour
             RefreshPlaneSelection();
         }
 
-        // The stock visualizer gates rendering on ARSession.state in Update.
-        // Native plane tracking and a valid mesh determine visibility here.
         int renderedPlanes = 0;
         Transform origin = _xrOrigin.CameraFloorOffsetObject.transform;
         foreach (ARPlane plane in _planeManager.trackables)
@@ -358,7 +372,7 @@ public class MarkerAndAnchorTracker : MonoBehaviour
             {
                 SmoothedPlane smoothed = UpdateSmoothedPlane(plane, meshFilter, meshRenderer,
                     origin, visible && hasMesh);
-                // Render a separate child; never change the native trackable pose.
+
                 meshRenderer.enabled = false;
                 smoothed.Renderer.enabled = visible && hasMesh;
                 if (smoothed.Renderer.enabled)
@@ -398,6 +412,7 @@ public class MarkerAndAnchorTracker : MonoBehaviour
         }
     }
 
+    // Smooth floor height and tilt without changing the native trackable.
     private SmoothedPlane UpdateSmoothedPlane(ARPlane plane, MeshFilter filter,
         MeshRenderer sourceRenderer, Transform origin, bool visible)
     {
@@ -434,14 +449,14 @@ public class MarkerAndAnchorTracker : MonoBehaviour
         bool floor = IsPlaneTypeAllowed(plane) && normal.y >= 0.5f;
         if (visible && floor)
         {
-            // Use the first valid floor measurement immediately.
+
             if (!state.FloorInitialized)
             {
                 state.ReferencePoint = position;
                 state.Normal = normal;
                 state.FloorInitialized = true;
             }
-            // Filter height at a fixed X/Z reference, not the changing boundary center.
+
             float targetHeight = GetPlaneHeightAtXZ(state.ReferencePoint, position, normal);
             float blend = PlaneSmoothingBlend(Time.unscaledDeltaTime, _planeSmoothingTime);
             state.ReferencePoint.y = Mathf.Lerp(state.ReferencePoint.y, targetHeight, blend);
@@ -467,7 +482,6 @@ public class MarkerAndAnchorTracker : MonoBehaviour
             !plane.boundary.IsCreated)
             return;
 
-        // Rebuild from native boundary points to avoid accumulating frame-to-frame offsets.
         outline.positionCount = plane.boundary.Length;
         for (int i = 0; i < plane.boundary.Length; i++)
         {
@@ -480,7 +494,7 @@ public class MarkerAndAnchorTracker : MonoBehaviour
 
     private static float PlaneSmoothingBlend(float deltaTime, float responseTime)
     {
-        // Exponential filtering gives the same response at different frame rates.
+
         return responseTime <= 0f ? 1f : 1f - Mathf.Exp(-Mathf.Max(0f, deltaTime) / responseTime);
     }
 
@@ -490,6 +504,7 @@ public class MarkerAndAnchorTracker : MonoBehaviour
             normal.z * (point.z - planePoint.z)) / normal.y;
     }
 
+    // Find a confirmed floor, spawn the avatar and bind the shared controls.
     private void UpdateCharacterPlacements()
     {
         if (!_spatialMappingGranted || !_planeManager.enabled)
@@ -500,26 +515,75 @@ public class MarkerAndAnchorTracker : MonoBehaviour
         foreach (KeyValuePair<ulong, MarkerState> entry in _markersById)
         {
             MarkerState marker = entry.Value;
+
+            if (marker.Instance != null && marker.TrackPreview != null && marker.GroundContactReady)
+            {
+                UpdateRunningCharacter(marker, origin);
+                continue;
+            }
             Vector3 worldPosition = marker.Instance != null
                 ? origin.TransformPoint(marker.PlacementSessionPosition) : spawnPosition;
             ARPlane plane = marker.Instance != null ? _planeManager.GetPlane(marker.GroundPlaneId) : null;
             if (plane == null || plane.subsumedBy != null || plane.trackingState == TrackingState.None)
                 plane = FindClosestPlane(worldPosition, float.PositiveInfinity, true);
+
+            if (plane == null && marker.Instance == null && _maxSpawnFloorAdjustment > 0f)
+            {
+                plane = FindNearbySpawnFloor(worldPosition, _maxSpawnFloorAdjustment,
+                    out Vector3 nearbyFloorPosition);
+                if (plane != null)
+                {
+                    float adjustment = Vector2.Distance(new Vector2(worldPosition.x, worldPosition.z),
+                        new Vector2(nearbyFloorPosition.x, nearbyFloorPosition.z));
+                    Debug.Log($"[MarkerPlacement] Marker {entry.Key}: requested spawn not covered. " +
+                        $"Using confirmed nearby floor {adjustment:F2} m away on plane {plane.trackableId}.");
+                    worldPosition = nearbyFloorPosition;
+                }
+            }
             if (plane == null)
+            {
+                if (Time.unscaledTime >= marker.NextPlacementStatusTime)
+                {
+                    marker.NextPlacementStatusTime = Time.unscaledTime + 5f;
+                    Debug.LogWarning($"[MarkerPlacement] Marker {entry.Key}: waiting for floor at " +
+                        $"target={worldPosition.ToString("F2")}, detectedPlanes={_planeManager.trackables.count}, " +
+                        $"nearbyFloorLimit={_maxSpawnFloorAdjustment:F2} m, floorOnly={_markersOnFloor}. " +
+                        "Scan the floor ahead. A visible marker plane does not necessarily cover the avatar target.");
+                }
                 continue;
+            }
 
             Transform surface = _smoothedPlanes.TryGetValue(plane.trackableId, out SmoothedPlane smoothed)
                 ? smoothed.Visual : plane.transform;
             Vector3 normal = surface.up;
             if (Vector3.Dot(normal, Vector3.up) < 0f)
                 normal = -normal;
-            // Keep the spawn footprint five meters ahead; use the filtered floor height.
+
             Vector3 surfacePosition = Mathf.Abs(normal.y) >= 0.5f
                 ? new Vector3(worldPosition.x, GetPlaneHeightAtXZ(worldPosition, surface.position, normal), worldPosition.z)
                 : new Plane(normal, surface.position).ClosestPointOnPlane(worldPosition);
 
             if (marker.Instance == null)
             {
+
+                if (_stadiumPreview != null && _stadiumPreview.Enabled)
+                {
+                    var previewObject = new GameObject($"Stadium preview {entry.Key}");
+                    previewObject.layer = _markerPrefab.layer;
+                    var preview = previewObject.AddComponent<StadiumTrackPreview>();
+
+                    if (preview.Initialize(origin, surfacePosition, origin.TransformPoint(marker.SessionPosition),
+                        origin.rotation * marker.SessionRotation, _stadiumPreview, out Vector3 entryPosition))
+                    {
+
+                        marker.TrackPreview = preview;
+                        surfacePosition = entryPosition;
+                        worldPosition = entryPosition;
+                    }
+                    else
+
+                        Destroy(previewObject);
+                }
                 marker.Instance = Instantiate(_markerPrefab, surfacePosition,
                     GetUprightRotation(surfacePosition, origin.rotation * marker.SessionRotation,
                         _xrOrigin.Camera.transform.position), origin);
@@ -528,15 +592,29 @@ public class MarkerAndAnchorTracker : MonoBehaviour
                 marker.GroundContactReady = false;
                 marker.Renderers = marker.Instance.GetComponentsInChildren<Renderer>(true);
                 marker.Animator = marker.Instance.GetComponentInChildren<Animator>();
+
+                marker.CharacterUi = ResolveRunnerStatsCanvas();
+                if (marker.CharacterUi == null)
+                    marker.CharacterUi = marker.Instance.GetComponentInChildren<UIScript>(true);
+                if (marker.TrackPreview != null)
+                {
+                    if (marker.CharacterUi != null)
+                        marker.CharacterUi.BindRunner(marker.TrackPreview, marker.Animator);
+                    else
+                        Debug.LogWarning("[StadiumTracking] No RunnerStatsCanvas UI found. Avatar waits for speed input.");
+                }
                 if (marker.Animator != null)
                 {
                     marker.OriginalCullingMode = marker.Animator.cullingMode;
                     marker.Animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
                     marker.Animator.applyRootMotion = false;
                 }
-                // Allow Start and the first animation evaluation before measuring the soles.
+
                 SetRendererVisibility(marker, false);
             }
+
+            if (marker.TrackPreview != null)
+                marker.TrackPreview.AlignAvatar(marker.Instance.transform, marker.Animator, surfacePosition);
             marker.GroundPlaneId = plane.trackableId;
 
             if (!marker.GroundContactReady)
@@ -560,12 +638,54 @@ public class MarkerAndAnchorTracker : MonoBehaviour
                     $"localSolePoint={marker.LocalGroundContact.ToString("F3")}.");
             }
 
-            // Keep the initial footprint stable and follow refinements of the floor height.
             Transform instanceTransform = marker.Instance.transform;
             Vector3 contactOffset = instanceTransform.TransformVector(marker.LocalGroundContact);
             instanceTransform.position = GetGroundedPosition(surfacePosition, contactOffset,
                 _characterGroundClearance);
         }
+    }
+
+    // Advance along the path and apply heading, ground height and foot offset.
+    private void UpdateRunningCharacter(MarkerState marker, Transform origin)
+    {
+        bool wasFinished = marker.TrackPreview.IsFinished;
+        Vector3 groundPosition = marker.TrackPreview.AdvanceRun(Time.deltaTime);
+
+        ARPlane plane = FindClosestPlane(groundPosition, 0.5f, true);
+        if (plane != null)
+        {
+            Transform surface = _smoothedPlanes.TryGetValue(plane.trackableId, out SmoothedPlane smoothed)
+                ? smoothed.Visual : plane.transform;
+            Vector3 normal = surface.up;
+            if (Mathf.Abs(normal.y) >= 0.5f)
+                groundPosition.y = GetPlaneHeightAtXZ(groundPosition, surface.position, normal);
+            marker.GroundPlaneId = plane.trackableId;
+        }
+
+        marker.TrackPreview.AlignAvatar(marker.Instance.transform, marker.Animator, groundPosition);
+        Vector3 contactOffset = marker.Instance.transform.TransformVector(marker.LocalGroundContact);
+        marker.Instance.transform.position = GetGroundedPosition(groundPosition, contactOffset, _characterGroundClearance);
+
+        marker.PlacementSessionPosition = origin.InverseTransformPoint(groundPosition);
+        if (!wasFinished && marker.TrackPreview.IsFinished && marker.CharacterUi != null &&
+            marker.CharacterUi.IsBoundTo(marker.TrackPreview))
+            marker.CharacterUi.StopAtTrackFinish();
+    }
+
+    // Find and cache the shared runner controls in the scene.
+    private UIScript ResolveRunnerStatsCanvas()
+    {
+        if (_runnerStatsCanvas != null)
+            return _runnerStatsCanvas;
+
+        foreach (UIScript ui in FindObjectsByType<UIScript>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+        {
+            if (!ui.IsRunnerStatsCanvas)
+                continue;
+            _runnerStatsCanvas = ui;
+            break;
+        }
+        return _runnerStatsCanvas;
     }
 
     private Vector3 GetCharacterSpawnPosition()
@@ -578,7 +698,7 @@ public class MarkerAndAnchorTracker : MonoBehaviour
     private static Vector3 GetForwardGroundPosition(Vector3 position, Vector3 forward,
         Vector3 right, float distance)
     {
-        // Ignore head pitch so looking down does not shorten the horizontal distance.
+
         Vector3 direction = Vector3.ProjectOnPlane(forward, Vector3.up);
         if (direction.sqrMagnitude < 0.0001f)
             direction = Vector3.ProjectOnPlane(Vector3.Cross(right, Vector3.up), Vector3.up);
@@ -594,6 +714,7 @@ public class MarkerAndAnchorTracker : MonoBehaviour
             surfacePosition.z);
     }
 
+    // Find a valid surface covering the requested position.
     private ARPlane FindClosestPlane(Vector3 worldPosition, float maxDistance, bool requireHorizontal)
     {
         ARPlane closest = null;
@@ -615,6 +736,45 @@ public class MarkerAndAnchorTracker : MonoBehaviour
         return closest;
     }
 
+    // Allow initial placement on a nearby confirmed floor within the adjustment limit.
+    private ARPlane FindNearbySpawnFloor(Vector3 target, float maxAdjustment, out Vector3 floorPosition)
+    {
+        floorPosition = target;
+        ARPlane bestPlane = null;
+        float bestDistanceSquared = maxAdjustment * maxAdjustment;
+        foreach (ARPlane plane in _planeManager.trackables)
+        {
+            if (plane.subsumedBy != null || plane.trackingState == TrackingState.None ||
+                plane.classification != PlaneClassification.Floor ||
+                (plane.alignment != PlaneAlignment.HorizontalUp && plane.alignment != PlaneAlignment.HorizontalDown) ||
+                Mathf.Abs(Vector3.Dot(plane.transform.up, Vector3.up)) < 0.5f)
+                continue;
+
+            var boundary = plane.boundary;
+            if (!boundary.IsCreated || boundary.Length < 3)
+                continue;
+
+            for (int i = 0, j = boundary.Length - 1; i < boundary.Length; j = i++)
+            {
+                Vector3 a = plane.transform.TransformPoint(new Vector3(boundary[j].x, 0f, boundary[j].y));
+                Vector3 b = plane.transform.TransformPoint(new Vector3(boundary[i].x, 0f, boundary[i].y));
+                Vector2 start = new Vector2(a.x, a.z);
+                Vector2 edge = new Vector2(b.x - a.x, b.z - a.z);
+                Vector2 toTarget = new Vector2(target.x - a.x, target.z - a.z);
+                float t = edge.sqrMagnitude > 0f ? Mathf.Clamp01(Vector2.Dot(toTarget, edge) / edge.sqrMagnitude) : 0f;
+                Vector3 candidate = Vector3.Lerp(a, b, t);
+                float distanceSquared = (toTarget - edge * t).sqrMagnitude;
+                if (distanceSquared > bestDistanceSquared)
+                    continue;
+                bestDistanceSquared = distanceSquared;
+                bestPlane = plane;
+                floorPosition = candidate;
+            }
+        }
+        return bestPlane;
+    }
+
+    // Measure the posed character mesh to place its feet on the floor.
     private static bool TryGetLowestCharacterPoint(MarkerState marker, out Vector3 lowestPoint)
     {
         lowestPoint = Vector3.zero;
@@ -624,7 +784,7 @@ public class MarkerAndAnchorTracker : MonoBehaviour
         var vertices = new List<Vector3>();
         try
         {
-            // Skinned mesh vertices describe the actual pose; renderer bounds can include all animations.
+
             foreach (SkinnedMeshRenderer skin in marker.Instance.GetComponentsInChildren<SkinnedMeshRenderer>())
             {
                 if (skin.sharedMesh == null)
@@ -650,7 +810,6 @@ public class MarkerAndAnchorTracker : MonoBehaviour
         if (found)
             return true;
 
-        // Static model fallback; ignore UI, particles and line renderers.
         foreach (Renderer renderer in marker.Renderers)
         {
             if (!(renderer is MeshRenderer) || renderer.GetComponentInParent<Canvas>() != null ||
@@ -757,7 +916,7 @@ public class MarkerAndAnchorTracker : MonoBehaviour
 
     private void ReportPlaneStatus(string status)
     {
-        // Report state changes at most once every five seconds.
+
         if (Time.unscaledTime < _nextPlaneStatusTime)
             return;
 
@@ -771,7 +930,7 @@ public class MarkerAndAnchorTracker : MonoBehaviour
 
     private void RefreshPlaneSelection()
     {
-        // Floor mode shows the entire detected floor, including separate patches.
+
         _visiblePlaneIds.Clear();
         if (_markersOnFloor)
         {
@@ -790,7 +949,7 @@ public class MarkerAndAnchorTracker : MonoBehaviour
         foreach (ARPlane plane in _planeManager.trackables)
         {
             bool visible = _visiblePlaneIds.Contains(plane.trackableId);
-            // Keep native tracking running while hiding unrelated surfaces.
+
             var visualizer = plane.GetComponent<ARPlaneMeshVisualizer>();
             if (visualizer != null)
                 visualizer.enabled = visible;
@@ -799,11 +958,11 @@ public class MarkerAndAnchorTracker : MonoBehaviour
 
     private void SelectPlanesAtMarkers()
     {
-        // General mode selects the closest surface containing each marker projection.
+
         Transform sessionOrigin = _xrOrigin.CameraFloorOffsetObject.transform;
         foreach (MarkerState marker in _markersById.Values)
         {
-            // Convert the marker position to Unity world space.
+
             Vector3 worldPosition = sessionOrigin.TransformPoint(marker.SessionPosition);
             ARPlane closestPlane = FindClosestPlane(worldPosition, _maxMarkerPlaneDistance, false);
             if (closestPlane != null)
@@ -813,7 +972,7 @@ public class MarkerAndAnchorTracker : MonoBehaviour
 
     private bool IsPlaneTypeAllowed(ARPlane plane)
     {
-        // Require a natively classified horizontal floor in floor mode.
+
         return !_markersOnFloor ||
             (plane.classification == PlaneClassification.Floor &&
                 (plane.alignment == PlaneAlignment.HorizontalUp ||
@@ -822,7 +981,7 @@ public class MarkerAndAnchorTracker : MonoBehaviour
 
     private static bool ContainsPoint(ARPlane plane, Vector2 point, float edgeTolerance)
     {
-        // Test a 2D point against the detected boundary polygon.
+
         var boundary = plane.boundary;
         if (!boundary.IsCreated || boundary.Length < 3)
             return false;
@@ -832,7 +991,7 @@ public class MarkerAndAnchorTracker : MonoBehaviour
         {
             Vector2 a = boundary[j];
             Vector2 b = boundary[i];
-            // Allow detection noise near a boundary, measured in world meters.
+
             Vector2 edge = b - a;
             float t = edge.sqrMagnitude > 0f
                 ? Mathf.Clamp01(Vector2.Dot(point - a, edge) / edge.sqrMagnitude) : 0f;
@@ -841,7 +1000,6 @@ public class MarkerAndAnchorTracker : MonoBehaviour
             if (worldOffset.sqrMagnitude <= edgeTolerance * edgeTolerance)
                 return true;
 
-            // Ray crossing: an odd number of intersections means inside.
             if ((a.y > point.y) != (b.y > point.y) &&
                 point.x < (b.x - a.x) * (point.y - a.y) / (b.y - a.y) + a.x)
                 inside = !inside;
