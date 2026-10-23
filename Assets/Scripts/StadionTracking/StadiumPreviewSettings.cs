@@ -20,6 +20,9 @@ namespace StadionTracking
 
         [Min(0.1f), Tooltip("Running speed in metres per second when the avatar's speed slider is at maximum.")]
         public float SpeedAtFullSlider = 6f;
+        public StadiumPacingMode PacingMode = StadiumPacingMode.ManualSpeed;
+        [Min(0.1f), Tooltip("Target time for one complete lap in minutes; pauses do not count.")]
+        public float TargetLapMinutes = 4f;
         [Tooltip("Preview places the reference path point at the avatar spawn. KnownMarkerPosition requires a surveyed marker placement.")]
         public StadiumAnchorMode AnchorMode = StadiumAnchorMode.AvatarSpawnPreview;
 

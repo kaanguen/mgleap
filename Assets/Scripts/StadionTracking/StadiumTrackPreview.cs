@@ -13,6 +13,20 @@ namespace StadionTracking
 
         public float RequestedSpeedFraction { get; private set; }
         public float SpeedAtFullSlider => Mathf.Max(0.1f, _settings.SpeedAtFullSlider);
+        public StadiumPacingMode PacingMode { get; private set; }
+        public float TargetLapMinutes { get; private set; } = 4f;
+        public double RequestedSpeedMetresPerSecond => RequestedSpeedFraction <= 0f ? 0.0 :
+            PacingMode == StadiumPacingMode.TargetLapTime
+                ? StadiumPacing.SpeedForLapTime(_run.LapLengthMetres, TargetLapMinutes)
+                : RequestedSpeedFraction * SpeedAtFullSlider;
+
+        public void SetPacingMode(StadiumPacingMode mode) => PacingMode = mode;
+
+        public void SetTargetLapMinutes(float minutes)
+        {
+            if (!float.IsNaN(minutes) && !float.IsInfinity(minutes) && minutes > 0)
+                TargetLapMinutes = Mathf.Max(0.1f, minutes);
+        }
 
         // Store this runner's slider input; zero pauses without resetting laps.
         public void SetRequestedSpeed(float fraction)
@@ -61,6 +75,8 @@ namespace StadionTracking
 
             entryGroundPosition = spawnGroundPosition;
             _settings = settings;
+            PacingMode = settings.PacingMode;
+            SetTargetLapMinutes(settings.TargetLapMinutes);
 
             int referenceLane = Mathf.Clamp(settings.ReferenceLane, 1, StadiumTrackGeometry.LaneCount);
             StadiumTrackGeometry.Sample reference = _geometry.Evaluate(referenceLane, settings.ReferenceMetres);
@@ -207,8 +223,7 @@ namespace StadionTracking
         // Advance continuously around the selected lane and return the ground position.
         public Vector3 AdvanceRun(float deltaTime)
         {
-            float fraction = RequestedSpeedFraction;
-            _run.Advance(fraction * Mathf.Max(0.1f, _settings.SpeedAtFullSlider), deltaTime);
+            _run.Advance(RequestedSpeedMetresPerSecond, deltaTime);
             _animationSpeedFraction = (float)(_run.CurrentSpeed / SpeedAtFullSlider);
             return transform.TransformPoint(Position(_geometry.Evaluate(Lane, _entryMetres + _run.TravelledMetres)));
         }

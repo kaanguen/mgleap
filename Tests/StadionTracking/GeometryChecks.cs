@@ -108,6 +108,30 @@ internal static class GeometryChecks
         Require(invalidRun.TravelledMetres == 0, "invalid input does not poison distance");
         Require(invalidRun.CurrentSpeed == 0, "invalid movement reports zero current speed");
 
+        Require(Math.Abs(StadiumPacing.SpeedForLapTime(400, 4) - 400.0 / 240) < 1e-12,
+            "four-minute pace for 400 metres");
+        Require(StadiumPacing.SpeedForLapTime(400, 0) == 0 &&
+            StadiumPacing.SpeedForLapTime(400, double.NaN) == 0, "invalid target time is rejected");
+        foreach (int fps in new[] { 30, 60, 120 })
+        {
+            foreach (int lane in new[] { 1, 8 })
+            {
+                double lapLength = track.Length(lane);
+                double pace = StadiumPacing.SpeedForLapTime(lapLength, 4);
+                var timedRun = new StadiumRunProgress(lapLength);
+                for (int frame = 0; frame < fps * 240; frame++)
+                    timedRun.Advance(pace, 1.0 / fps);
+                Require(Math.Abs(timedRun.TravelledMetres - lapLength) < 1e-8,
+                    "target time covers one actual lap at every frame rate");
+                timedRun.Advance(0, 10);
+                Require(Math.Abs(timedRun.TravelledMetres - lapLength) < 1e-8,
+                    "target-time pause preserves progress");
+                timedRun.Advance(pace, 240);
+                Require(Math.Abs(timedRun.TravelledMetres - 2 * lapLength) < 1e-8,
+                    "target pacing preserves continuous laps");
+            }
+        }
+
         for (int lane = 1; lane <= 8; lane++)
         {
             double r = track.Radius(lane);
@@ -119,7 +143,7 @@ internal static class GeometryChecks
                 "map outer curve uses single-lane radius");
             Require(Math.Abs(right.V - 0.5) < 1e-10, "map right curve height");
         }
-        Console.WriteLine("PASS: 8 lanes, 16000 path samples, seams, heading, wrap, 80 global projections; continuous laps, current speed and pause/resume at 30/60/120 FPS.");
+        Console.WriteLine("PASS: geometry, map, continuous laps and pause/resume; four-minute target pacing on inner/outer lanes at 30/60/120 FPS.");
     }
 
     private static double Distance(StadiumTrackGeometry.Sample a, StadiumTrackGeometry.Sample b) =>
