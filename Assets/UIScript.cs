@@ -2,9 +2,8 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem.UI;
 using UnityEngine.XR.Interaction.Toolkit.UI;
-using UnityEngine.UI;
 using TMPro;
-
+using StadionTracking;
 
 public class UIScript : MonoBehaviour
 {
@@ -15,13 +14,66 @@ public class UIScript : MonoBehaviour
     private Camera mainCamera;
 
     [SerializeField]
-    private TextMeshPro textMesh;
+    private TMP_Text textMesh;
+
+    [SerializeField] private TMP_Text currentSpeedText;
+    [SerializeField] private TMP_Text currentLapText;
+    [SerializeField] private TMP_Text completedLapsText;
+    [SerializeField] private TMP_Text statusText;
+    private float nextStatsRefresh;
 
     [SerializeField]
     private Animator avatar;
 
     [SerializeField]
-    private Slider slider;
+    private UnityEngine.UI.Slider slider;
+
+    [Header("Panel follows the user")]
+    [SerializeField] private bool followUser = true;
+    [SerializeField, Min(0.4f)] private float distanceFromUser = 2.5f;
+    [SerializeField] private float verticalOffset = -0.5f;
+    [SerializeField] private float horizontalOffset = 0.6f;
+    [SerializeField, Min(0.01f), Tooltip("Seconds for the panel to gently catch up with the user. Larger values follow more slowly.")]
+    private float followSmoothTime = 0.65f;
+    private Vector3 panelFollowVelocity;
+    private bool panelPoseInitialized;
+
+    private StadiumTrackPreview runner;
+    private bool hadRunner;
+    private bool hasSpeedParameter;
+    private bool hasRunningParameter;
+    private RunnerMapMarker runnerMap;
+
+    public bool IsRunnerStatsCanvas => uiPanel != null && uiPanel.name.StartsWith("RunnerStatsCanvas");
+    public bool IsBoundTo(StadiumTrackPreview candidate) => runner == candidate;
+
+    // Pause the previous runner and connect the panel to the newly spawned avatar.
+    public void BindRunner(StadiumTrackPreview newRunner, Animator newAvatar)
+    {
+        if (runner != null)
+            runner.SetRequestedSpeed(0f);
+        if (avatar != null)
+        {
+            if (hasSpeedParameter) avatar.SetFloat(speedParameter, 0f);
+            if (hasRunningParameter) avatar.SetBool(runningParameter, false);
+        }
+        runner = newRunner;
+        hadRunner = runner != null;
+        avatar = newAvatar;
+        hasSpeedParameter = avatar != null && HasParameter(avatar, speedParameter, AnimatorControllerParameterType.Float);
+        hasRunningParameter = avatar != null && HasParameter(avatar, runningParameter, AnimatorControllerParameterType.Bool);
+        if (slider == null && uiPanel != null)
+            slider = uiPanel.GetComponentInChildren<UnityEngine.UI.Slider>(true);
+        if (slider != null)
+        {
+            slider.SetValueWithoutNotify(slider.minValue);
+            slider.interactable = runner != null;
+        }
+        UpdateAnimation(0f);
+        ConnectRunnerMap();
+        if (runner != null)
+            Debug.Log($"[RunnerStats] Connected to {newRunner.name}; lane {newRunner.Lane}. Speed reset to zero.");
+    }
 
     [SerializeField]
     private string runningParameter = "isRunning";
@@ -29,6 +81,7 @@ public class UIScript : MonoBehaviour
     [SerializeField]
     private string speedParameter = "speed";
 
+    // Initialize the canvas, speed slider and XR interaction.
     private void Start()
     {
         if (uiPanel == null)
@@ -39,7 +92,7 @@ public class UIScript : MonoBehaviour
         }
 
         if (slider == null)
-            slider = uiPanel.GetComponentInChildren<Slider>(true);
+            slider = uiPanel.GetComponentInChildren<UnityEngine.UI.Slider>(true);
 
         if (slider == null)
         {
@@ -48,30 +101,20 @@ public class UIScript : MonoBehaviour
             return;
         }
 
-        mainCamera = Camera.main;
         if (mainCamera == null)
-        {
-            Debug.LogError("[UIScript] Main camera is missing.");
-            enabled = false;
-            return;
-        }
+            mainCamera = Camera.main;
 
         uiPanel.worldCamera = mainCamera;
-        slider.interactable = true;
+        slider.interactable = runner != null;
         if (uiPanel.GetComponent<TrackedDeviceGraphicRaycaster>() == null)
             uiPanel.gameObject.AddComponent<TrackedDeviceGraphicRaycaster>();
         EnsureXRUIInputModule();
 
         slider.onValueChanged.AddListener(UpdateAnimation);
         UpdateAnimation(slider.value);
+        ConnectRunnerMap();
 
-        if (avatar == null)
-        {
-            Debug.LogError(
-                "[UIScript] Avatar Animator is missing. Assign the character's Animator " +
-                "to the Avatar field.");
-        }
-        else
+        if (avatar != null)
         {
             avatar.applyRootMotion = false;
 
@@ -82,18 +125,133 @@ public class UIScript : MonoBehaviour
         }
     }
 
+    // Send slider input to the bound runner and display its requested speed.
     private void UpdateAnimation(float value)
     {
-        bool isRunning = !Mathf.Approximately(value, 0f);
+        float fraction = runner != null && slider != null ? slider.normalizedValue : 0f;
+        bool isRunning = fraction > 0f;
+        if (runner != null)
+            runner.SetRequestedSpeed(fraction);
 
-        if (textMesh != null)
-            textMesh.text = $"Speed: {value:F2}";
+        RefreshStats();
 
-        if (avatar != null)
+        if (avatar != null && runner == null)
         {
-            avatar.SetFloat(speedParameter, value);
-            avatar.SetBool(runningParameter, isRunning);
+            if (hasSpeedParameter) avatar.SetFloat(speedParameter, fraction);
+            if (hasRunningParameter) avatar.SetBool(runningParameter, isRunning);
         }
+    }
+
+    private void RefreshStats()
+    {
+        bool connected = runner != null;
+        if (textMesh != null)
+            textMesh.text = connected
+                ? $"ZIELTEMPO  {runner.RequestedSpeedFraction * runner.SpeedAtFullSlider:F2} m/s"
+                : "ZIELTEMPO  -- m/s";
+        if (currentSpeedText != null)
+            currentSpeedText.text = connected
+                ? $"<size=45%>AKTUELLES TEMPO</size>\n{runner.CurrentSpeed:F2} <size=55%>m/s</size>"
+                : "<size=45%>AKTUELLES TEMPO</size>\n-- <size=55%>m/s</size>";
+        if (currentLapText != null)
+            currentLapText.text = connected
+                ? $"<size=55%>AKTUELLE RUNDE</size>\n{runner.CurrentLap}"
+                : "<size=55%>AKTUELLE RUNDE</size>\n--";
+        if (completedLapsText != null)
+            completedLapsText.text = connected
+                ? $"<size=55%>GELAUFENE RUNDEN</size>\n{runner.CompletedLaps}"
+                : "<size=55%>GELAUFENE RUNDEN</size>\n--";
+        if (statusText != null)
+            statusText.text = !connected ? "RUNNER STATS  /  WARTE AUF AVATAR"
+                : $"RUNNER STATS  /  {(runner.CurrentSpeed > 0 ? "LÄUFT" : "PAUSE")}  /  BAHN {runner.Lane}";
+        nextStatsRefresh = Time.unscaledTime + 0.1f;
+    }
+
+    // Gently follow the user and clear references to a destroyed runner.
+    private void LateUpdate()
+    {
+
+        if (mainCamera == null)
+            mainCamera = Camera.main;
+        if (uiPanel != null && mainCamera != null)
+        {
+            uiPanel.worldCamera = mainCamera;
+            if (followUser)
+            {
+                Transform head = mainCamera.transform;
+                Vector3 forward = Vector3.ProjectOnPlane(head.forward, Vector3.up);
+                if (forward.sqrMagnitude < 0.0001f)
+                    forward = Vector3.Cross(head.right, Vector3.up);
+                forward.Normalize();
+                Vector3 right = Vector3.Cross(Vector3.up, forward);
+                Vector3 targetPosition = head.position + forward * Mathf.Max(0.4f, distanceFromUser)
+                    + right * horizontalOffset + Vector3.up * verticalOffset;
+                Transform panel = uiPanel.transform;
+                if (!panelPoseInitialized)
+                {
+
+                    panel.position = targetPosition;
+                    panel.rotation = Quaternion.LookRotation(targetPosition - head.position, Vector3.up);
+                    panelPoseInitialized = true;
+                }
+                else
+                {
+                    float responseTime = Mathf.Max(0.01f, followSmoothTime);
+                    panel.position = Vector3.SmoothDamp(panel.position, targetPosition,
+                        ref panelFollowVelocity, responseTime, Mathf.Infinity, Time.unscaledDeltaTime);
+                    Vector3 facing = panel.position - head.position;
+                    if (facing.sqrMagnitude > 0.0001f)
+                    {
+                        float blend = 1f - Mathf.Exp(-Time.unscaledDeltaTime / responseTime);
+                        panel.rotation = Quaternion.Slerp(panel.rotation,
+                            Quaternion.LookRotation(facing, Vector3.up), blend);
+                    }
+                }
+            }
+            else
+            {
+                panelPoseInitialized = false;
+                panelFollowVelocity = Vector3.zero;
+            }
+        }
+        if (hadRunner && runner == null)
+        {
+
+            hadRunner = false;
+            avatar = null;
+            if (slider != null)
+            {
+                slider.SetValueWithoutNotify(slider.minValue);
+                slider.interactable = false;
+            }
+            UpdateAnimation(0f);
+            if (runnerMap != null)
+                runnerMap.BindRunner(null);
+        }
+        if (Time.unscaledTime >= nextStatsRefresh)
+            RefreshStats();
+    }
+
+    // Attach the position overlay to the existing stadium image.
+    private void ConnectRunnerMap()
+    {
+        if (uiPanel == null)
+            return;
+        if (runnerMap == null)
+        {
+
+            foreach (UnityEngine.UI.RawImage image in uiPanel.GetComponentsInChildren<UnityEngine.UI.RawImage>(true))
+            {
+                if (image.name != "stadion")
+                    continue;
+                runnerMap = image.GetComponent<RunnerMapMarker>();
+                if (runnerMap == null)
+                    runnerMap = image.gameObject.AddComponent<RunnerMapMarker>();
+                break;
+            }
+        }
+        if (runnerMap != null)
+            runnerMap.BindRunner(runner);
     }
 
     private static bool HasParameter(
@@ -110,6 +268,7 @@ public class UIScript : MonoBehaviour
         return false;
     }
 
+    // Use the XR input module for hand-controlled UI.
     private static void EnsureXRUIInputModule()
     {
         EventSystem eventSystem = EventSystem.current;
@@ -132,6 +291,8 @@ public class UIScript : MonoBehaviour
 
     private void OnDestroy()
     {
+        if (runner != null)
+            runner.SetRequestedSpeed(0f);
         if (slider != null)
             slider.onValueChanged.RemoveListener(UpdateAnimation);
     }
