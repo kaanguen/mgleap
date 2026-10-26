@@ -51,6 +51,8 @@ namespace StadionTracking
             set => speedKmh = SanitizeSpeed(value);
         }
         public float SpeedMetresPerSecond => SpeedKmh / 3.6f;
+        /// <summary>Current pace in seconds/km; zero denotes pause.</summary>
+        public float PaceSecondsPerKilometre => SpeedKmh > 0f ? 3600f / SpeedKmh : 0f;
         public double TravelledMetres => travelledMetres;
         public long CompletedLaps => (long)(travelledMetres / 400.0);
         public double MetresIntoLap => travelledMetres % 400.0;
@@ -126,6 +128,42 @@ namespace StadionTracking
 
         /// <summary>Useful later for feeding belt readings; values use km/h.</summary>
         public void SetSpeedKmh(float value) => SpeedKmh = value;
+
+        /// <summary>Setup/menu API: e.g. 6.0 min/km sets 10 km/h. Invalid pace leaves speed unchanged.</summary>
+        public bool TrySetPaceMinutesPerKilometre(float minutes)
+        {
+            if (float.IsNaN(minutes) || float.IsInfinity(minutes) || minutes <= 0f) return false;
+            float speed = 60f / minutes;
+            if (float.IsInfinity(speed) || speed <= 0f) return false;
+            SpeedKmh = speed;
+            return true;
+        }
+
+        /// <summary>Minutes:seconds per km, e.g. (7,30) sets 8 km/h.</summary>
+        public bool TrySetPace(int minutes, int seconds)
+        {
+            if (minutes < 0 || seconds < 0 || seconds > 59) return false;
+            double totalSeconds = (double)minutes * 60 + seconds;
+            if (totalSeconds <= 0) return false;
+            SpeedKmh = (float)(3600.0 / totalSeconds);
+            return true;
+        }
+
+        /// <summary>World pose at an arc-length offset from the user, with the route's actual heading.</summary>
+        public void GetRunningPose(float metresAhead, out Vector3 position, out Quaternion rotation)
+        {
+            if (float.IsNaN(metresAhead) || float.IsInfinity(metresAhead)) metresAhead = 0;
+            if (!followOval400m)
+            {
+                position = startPosition + startRotation * Vector3.forward * metresAhead;
+                rotation = startRotation;
+                return;
+            }
+            var sample = oval.Evaluate(1, (ovalStartMetres + travelledMetres % 400.0 + metresAhead) * oval.Length(1) / 400.0);
+            position = transform.TransformPoint(new Vector3((float)sample.X, 0, (float)sample.Z));
+            Vector3 tangent = transform.TransformDirection(new Vector3((float)sample.DirectionX, 0, (float)sample.DirectionZ));
+            rotation = Quaternion.LookRotation(tangent, Vector3.up);
+        }
 
         // The tile pattern is periodic, so wrapping keeps coordinates small on long runs.
         public void AdvanceSimulation(float elapsedSeconds)

@@ -46,6 +46,8 @@ public class MarkerAndAnchorTracker : MonoBehaviour
     [SerializeField] private StadiumPreviewSettings _stadiumPreview = new StadiumPreviewSettings();
     [SerializeField, Tooltip("Optional shared RunnerStatsCanvas UI. If empty, it is found in the active scene when an avatar spawns.")]
     private UIScript _runnerStatsCanvas;
+    [SerializeField, Tooltip("Optional ActiveStats HUD. If empty, it is found in the active scene when a runner spawns.")]
+    private ActiveStatsDisplay _activeStatsDisplay;
     [Header("Plane diagnostics")]
     [SerializeField] private bool _logPlaneDiagnostics = true;
     [SerializeField, Min(1f)] private float _planeDiagnosticsInterval = 5f;
@@ -602,6 +604,8 @@ public class MarkerAndAnchorTracker : MonoBehaviour
                         marker.CharacterUi.BindRunner(marker.TrackPreview, marker.Animator);
                     else
                         Debug.LogWarning("[StadiumTracking] No RunnerStatsCanvas UI found. Avatar waits for speed input.");
+
+                    ResolveActiveStatsDisplay()?.BindRunner(marker.TrackPreview);
                 }
                 if (marker.Animator != null)
                 {
@@ -682,6 +686,15 @@ public class MarkerAndAnchorTracker : MonoBehaviour
             break;
         }
         return _runnerStatsCanvas;
+    }
+
+    private ActiveStatsDisplay ResolveActiveStatsDisplay()
+    {
+        if (_activeStatsDisplay != null)
+            return _activeStatsDisplay;
+
+        _activeStatsDisplay = FindObjectOfType<ActiveStatsDisplay>();
+        return _activeStatsDisplay;
     }
 
     private Vector3 GetCharacterSpawnPosition()

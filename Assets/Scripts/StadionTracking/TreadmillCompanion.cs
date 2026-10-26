@@ -3,13 +3,22 @@ using UnityEngine;
 
 namespace StadionTracking
 {
+    public enum TreadmillRunMode
+    {
+        SideBySide,
+        Pacer
+    }
+
     /// <summary>A companion at the same virtual progress as the treadmill runner.</summary>
     public sealed class TreadmillCompanion : MonoBehaviour
     {
         [SerializeField] private StraightTreadmillWorld world;
         [SerializeField] private GameObject avatarPrefab;
+        [SerializeField] private TreadmillRunMode runMode = TreadmillRunMode.SideBySide;
         [SerializeField, Tooltip("Offset in metres from the calibrated belt: positive X is the right-hand neighbouring lane.")]
         private Vector3 sideOffset = new Vector3(1.22f, 0f, 0f);
+        [SerializeField, Min(0.5f), Tooltip("Pacer lead along the actual track in metres; follows bends rather than a straight offset.")]
+        private float pacerLeadMetres = 3f;
         private GameObject avatar;
         private Animator animator;
         private float soleOffset;
@@ -22,7 +31,37 @@ namespace StadionTracking
         public GameObject Avatar => avatar;
         public Animator Animator => animator;
         public float AppliedSpeedMetresPerSecond { get; private set; }
-        public Vector3 GroundPosition => world.RunnerGroundPosition + world.RunnerRotation * sideOffset;
+        public TreadmillRunMode Mode
+        {
+            get => runMode;
+            set => runMode = value == TreadmillRunMode.Pacer ? TreadmillRunMode.Pacer : TreadmillRunMode.SideBySide;
+        }
+        public float PacerLeadMetres
+        {
+            get => pacerLeadMetres;
+            set => pacerLeadMetres = float.IsNaN(value) || float.IsInfinity(value) ? 3f : Mathf.Max(0.5f, value);
+        }
+        public Vector3 GroundPosition
+        {
+            get
+            {
+                GetGroundPose(out Vector3 position, out _);
+                return position;
+            }
+        }
+
+        public void SetMode(TreadmillRunMode mode) => Mode = mode;
+
+        private void GetGroundPose(out Vector3 position, out Quaternion rotation)
+        {
+            if (runMode == TreadmillRunMode.Pacer)
+                world.GetRunningPose(PacerLeadMetres, out position, out rotation);
+            else
+            {
+                position = world.RunnerGroundPosition + world.RunnerRotation * sideOffset;
+                rotation = world.RunnerRotation;
+            }
+        }
 
         private void LateUpdate() => Synchronize();
 
@@ -46,7 +85,8 @@ namespace StadionTracking
             avatar.SetActive(true);
             // The world already supplies the virtual forward motion. A second distance integrator
             // would make the companion drift away. Use the fixed belt frame, never the head's gaze.
-            avatar.transform.SetPositionAndRotation(GroundPosition - Vector3.up * soleOffset, world.RunnerRotation);
+            GetGroundPose(out Vector3 ground, out Quaternion heading);
+            avatar.transform.SetPositionAndRotation(ground - Vector3.up * soleOffset, heading);
             AppliedSpeedMetresPerSecond = world.SpeedMetresPerSecond;
             if (animator == null) return;
             LocomotionTiming.Evaluate(AppliedSpeedMetresPerSecond, walkSpeed, runSpeed, sprintSpeed,
@@ -59,7 +99,8 @@ namespace StadionTracking
 
         private void Spawn()
         {
-            avatar = Instantiate(avatarPrefab, GroundPosition, world.RunnerRotation, transform);
+            GetGroundPose(out Vector3 ground, out Quaternion heading);
+            avatar = Instantiate(avatarPrefab, ground, heading, transform);
             avatar.name = "Running companion";
             animator = avatar.GetComponentInChildren<Animator>();
             if (animator != null)
@@ -76,7 +117,7 @@ namespace StadionTracking
                 animator.Update(0f);
             }
             soleOffset = LowestPointY() - avatar.transform.position.y;
-            Debug.Log("[Treadmill] Companion spawned on adjacent lane; shares treadmill speed and progress.");
+            Debug.Log($"[Treadmill] Avatar spawned in {runMode} mode; shares the configured treadmill pace.");
         }
 
         private void CalibrateGaits()
@@ -127,5 +168,7 @@ namespace StadionTracking
         {
             if (avatar != null) avatar.SetActive(false);
         }
+
+        private void OnValidate() => PacerLeadMetres = pacerLeadMetres;
     }
 }
