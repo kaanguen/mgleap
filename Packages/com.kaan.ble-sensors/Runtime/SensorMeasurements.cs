@@ -41,10 +41,10 @@ public class SensorMeasurements : MonoBehaviour
                     hasSpo2=true;
                 }
             }
-            return "<size=80%><color=#AAB8C7><b>TEMPERATUR</b></color></size>\n"
-                +"<size=130%><color=#F5F8FF>"+temperature+"</color></size>\n\n"
-                +"<size=80%><color=#AAB8C7><b>SpO2</b></color></size>\n"
-                +"<size=130%><color=#F5F8FF>"+spo2+"</color></size>";
+            return "<size=13><color=#E3DEF7><b>TEMPERATUR</b></color></size>\n"
+                +"<size=28><color=#FFFFFF>"+temperature+"</color></size>\n\n"
+                +"<size=13><color=#E3DEF7><b>SpO2</b></color></size>\n"
+                +"<size=28><color=#FFFFFF>"+spo2+"</color></size>";
         }
     }
     protected virtual void OnEnable() {

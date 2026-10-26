@@ -23,7 +23,7 @@ namespace StadionTracking
         private float trackingSettledAt = -1f;
         private bool requestingFloor;
         private float requestedSpeed;
-        private static readonly Color Ink = new Color(0.95f, 0.97f, 1f);
+        private static readonly Color Ink = RunnerUiTheme.Label;
 
         private void Awake()
         {
@@ -75,7 +75,7 @@ namespace StadionTracking
 
         private void Update()
         {
-            if (canvas == null || world.HeadCamera == null) return;
+            if (canvas == null || world.HeadCamera == null || canvas.GetComponent<RunnerArPanel>() != null) return;
             // Keep the menu reachable across the initial tracking/reference-space update.
             Transform head = world.HeadCamera.transform;
             if (!world.HeadPoseReady) { menuPlaced = false; trackingSettledAt = -1f; }
@@ -121,33 +121,18 @@ namespace StadionTracking
 
         private void BuildMenu()
         {
-            var panel = new GameObject("HeightSetupCanvas", typeof(RectTransform), typeof(Canvas),
-                typeof(UnityEngine.UI.CanvasScaler), typeof(UnityEngine.UI.GraphicRaycaster),
-                typeof(TrackedDeviceGraphicRaycaster), typeof(UnityEngine.UI.Image),
-                typeof(UnityEngine.UI.VerticalLayoutGroup));
-            panel.transform.SetParent(transform, false);
-            canvas = panel.GetComponent<Canvas>();
-            canvas.renderMode = RenderMode.WorldSpace;
-            canvas.worldCamera = world.HeadCamera;
-            var rect = panel.GetComponent<RectTransform>();
-            rect.sizeDelta = new Vector2(500, 920);
-            rect.localScale = Vector3.one * 0.001f;
-            panel.GetComponent<UnityEngine.UI.Image>().color = new Color(0.035f, 0.055f, 0.09f, 1f);
-            var layout = panel.GetComponent<UnityEngine.UI.VerticalLayoutGroup>();
-            layout.padding = new RectOffset(24, 24, 20, 20);
-            layout.spacing = 8;
-            layout.childControlWidth = true; layout.childControlHeight = true;
-            layout.childForceExpandWidth = true; layout.childForceExpandHeight = false;
-
-            Label(panel.transform, "Laufbahn platzieren", 30, 40);
-            Label(panel.transform, "Aufrecht auf dem Laufband stehen.\nGröße eingeben oder Bodenreferenz nutzen.", 20, 56);
-            Label(panel.transform, "Körpergröße in cm (80–230)", 21, 28);
-            var field = Box(panel.transform, "BodyHeightCm", 52);
-            field.AddComponent<UnityEngine.UI.Image>().color = new Color(0.13f, 0.18f, 0.25f);
+            canvas = RunnerUiTheme.Panel("HeightSetupCanvas", 588, transform);
+            canvas.GetComponent<RunnerArPanel>().Priority = 50;
+            var parent = canvas.transform;
+            RunnerUiTheme.Text("GuideTitle", parent, "KÖRPERGRÖSSE IN CM", 20, 20, 260, 20, 13, false, true);
+            var field = Box(parent, "BodyHeightCm", 40);
+            Place(field, 20, 54, 260, 40);
+            field.AddComponent<UnityEngine.UI.Image>().color = new Color(1, 1, 1, .07f);
             heightInput = field.AddComponent<UnityEngine.UI.InputField>();
             heightInput.contentType = UnityEngine.UI.InputField.ContentType.IntegerNumber;
             heightInput.characterLimit = 3;
-            var fieldText = Label(field.transform, "", 34, 0);
+            var fieldText = Label(field.transform, "", 28, 0);
+            fieldText.fontSize = 28; fieldText.color = RunnerUiTheme.Value;
             var textRect = fieldText.rectTransform;
             textRect.anchorMin = Vector2.zero; textRect.anchorMax = Vector2.one;
             textRect.offsetMin = new Vector2(12, 3); textRect.offsetMax = new Vector2(-12, -3);
@@ -155,27 +140,34 @@ namespace StadionTracking
             heightInput.targetGraphic = field.GetComponent<UnityEngine.UI.Image>();
             heightInput.text = bodyHeightCm.ToString(CultureInfo.InvariantCulture);
             heightInput.onValueChanged.AddListener(_ => InvalidatePreview());
-
             for (int row = 0; row < 4; row++)
             {
-                var keys = Row(panel.transform, "KeypadRow" + row, 44);
+                var keys = Row(parent, "KeypadRow" + row, 32);
+                Place(keys, 20, 108 + row * 44, 260, 32);
                 for (int column = 0; column < 3; column++)
                 {
                     string key = row < 3 ? (row * 3 + column + 1).ToString() :
                         column == 0 ? "Löschen" : column == 1 ? "0" : "←";
-                    Button(keys.transform, key, () => EnterKey(key), 44);
+                    Button(keys.transform, key, () => EnterKey(key), 32);
                 }
             }
-
-            Label(panel.transform, "Augenhöhe geschätzt: Größe minus 12 cm.\nBahn danach mit ±2 cm auf Fußhöhe korrigieren.", 18, 50);
-            Button(panel.transform, "Größe übernehmen / Vorschau", ApplyHeight, 48);
-            Button(panel.transform, "Bodenreferenz automatisch nutzen", ApplyFloor, 48);
-            var adjust = Row(panel.transform, "HeightCorrection", 44);
-            Button(adjust.transform, "Bahn −2 cm", () => Adjust(-0.02f), 44);
-            Button(adjust.transform, "Bahn +2 cm", () => Adjust(0.02f), 44);
-            status = Label(panel.transform, "Erst die Höhe bestätigen. Die Bahn bleibt stehen.", 19, 62);
-            startButton = Button(panel.transform, "Höhe passt – weiter", Finish, 48);
+            Place(Button(parent, "Größe übernehmen / Vorschau", ApplyHeight, 40).gameObject, 20, 292, 260, 40);
+            Place(Button(parent, "Bodenreferenz automatisch nutzen", ApplyFloor, 40).gameObject, 20, 346, 260, 40);
+            var adjust = Row(parent, "HeightCorrection", 40); Place(adjust, 20, 400, 260, 40);
+            Button(adjust.transform, "Bahn −2 cm", () => Adjust(-0.02f), 40);
+            Button(adjust.transform, "Bahn +2 cm", () => Adjust(0.02f), 40);
+            status = Label(parent, "Erst die Höhe bestätigen. Die Bahn bleibt stehen.", 13, 60);
+            Place(status.gameObject, 20, 454, 260, 60);
+            startButton = Button(parent, "Höhe passt – weiter", Finish, 40);
+            Place(startButton.gameObject, 20, 528, 260, 40);
             startButton.interactable = false;
+        }
+
+        private static void Place(GameObject obj, float x, float y, float width, float height)
+        {
+            var rect = obj.GetComponent<RectTransform>();
+            rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0, 1);
+            rect.anchoredPosition = new Vector2(x, -y); rect.sizeDelta = new Vector2(width, height);
         }
 
         private void EnterKey(string key)
@@ -276,7 +268,7 @@ namespace StadionTracking
         {
             var obj = Box(parent, "Label", height);
             var label = obj.AddComponent<UnityEngine.UI.Text>();
-            label.font = font; label.text = text; label.fontSize = size; label.color = Ink;
+            label.font = font; label.text = text; label.fontSize = size >= 30 ? 28 : 13; label.color = Ink;
             label.alignment = TextAnchor.MiddleCenter; label.raycastTarget = false;
             return label;
         }
@@ -284,9 +276,10 @@ namespace StadionTracking
         private UnityEngine.UI.Button Button(Transform parent, string text, UnityEngine.Events.UnityAction action, float height)
         {
             var obj = Box(parent, text, height);
-            obj.AddComponent<UnityEngine.UI.Image>().color = new Color(0.12f, 0.32f, 0.43f);
+            var fill = obj.AddComponent<RunnerGlassGraphic>();
+            fill.FlatSurface = true; fill.color = new Color(1, 1, 1, .07f);
             var button = obj.AddComponent<UnityEngine.UI.Button>();
-            button.targetGraphic = obj.GetComponent<UnityEngine.UI.Image>();
+            button.targetGraphic = fill;
             button.onClick.AddListener(action);
             var label = Label(obj.transform, text, 20, 0);
             label.rectTransform.anchorMin = Vector2.zero; label.rectTransform.anchorMax = Vector2.one;

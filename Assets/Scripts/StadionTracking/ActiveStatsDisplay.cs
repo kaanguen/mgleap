@@ -8,6 +8,9 @@ namespace StadionTracking
     {
         [SerializeField] private Canvas statsCanvas;
         [SerializeField] private TMP_Text statsReadout;
+        [SerializeField] private TMP_Text timerReadout;
+        [SerializeField] private TMP_Text distanceReadout;
+        [SerializeField] private TMP_Text paceReadout;
         [SerializeField] private Camera headCamera;
         [SerializeField] private StraightTreadmillWorld treadmillWorld;
         [SerializeField, Range(0f, 0.25f)] private float horizontalMargin = 0.12f;
@@ -30,11 +33,12 @@ namespace StadionTracking
             if (statsReadout == null)
                 statsReadout = GetComponentInChildren<TMP_Text>(true);
 
-            if (statsCanvas == null || statsReadout == null)
+            if (statsCanvas == null || (statsReadout == null && timerReadout == null))
             {
                 Debug.LogError("[ActiveStats] Assign a Canvas and a TextMeshPro readout.", this);
                 enabled = false;
             }
+            if (GetComponent<RunnerArPanel>() == null) gameObject.AddComponent<RunnerArPanel>();
         }
 
         public void BindRunner(StadiumTrackPreview activeRunner)
@@ -58,35 +62,6 @@ namespace StadionTracking
                 return;
 
             statsCanvas.worldCamera = headCamera;
-            transform.localScale = Vector3.one * worldScale;
-
-            RectTransform canvasRect = (RectTransform)transform;
-            float panelWidth = canvasRect.rect.width * worldScale;
-            float panelHeight = canvasRect.rect.height * worldScale;
-            float viewWidth = Vector3.Distance(
-                headCamera.ViewportToWorldPoint(new Vector3(0f, 0f, distanceFromHead)),
-                headCamera.ViewportToWorldPoint(new Vector3(1f, 0f, distanceFromHead)));
-            float viewHeight = Vector3.Distance(
-                headCamera.ViewportToWorldPoint(new Vector3(0f, 0f, distanceFromHead)),
-                headCamera.ViewportToWorldPoint(new Vector3(0f, 1f, distanceFromHead)));
-            if (viewWidth <= 0f || viewHeight <= 0f)
-                return;
-
-            float halfPanelWidth = panelWidth / (2f * viewWidth);
-            float halfPanelHeight = panelHeight / (2f * viewHeight);
-            float centerX = Mathf.Clamp(
-                horizontalMargin + halfPanelWidth,
-                halfPanelWidth + safeViewportMargin,
-                1f - halfPanelWidth - safeViewportMargin);
-            float centerY = Mathf.Clamp(
-                1f - verticalMargin - halfPanelHeight,
-                halfPanelHeight + safeViewportMargin,
-                1f - halfPanelHeight - safeViewportMargin);
-            Vector3 panelPosition = headCamera.ViewportToWorldPoint(
-                new Vector3(centerX, centerY, distanceFromHead));
-            transform.SetPositionAndRotation(
-                panelPosition,
-                headCamera.transform.rotation);
 
             if (runner == null || !runner.isActiveAndEnabled)
                 runner = FindObjectOfType<StadiumTrackPreview>();
@@ -122,7 +97,16 @@ namespace StadionTracking
             if (Time.unscaledTime < nextRefresh)
                 return;
 
-            statsReadout.text = activeRunner == null && activeTreadmillWorld == null
+            string timeValue = FormatElapsedTime(elapsedSeconds);
+            string distanceValue = (travelledMetres / 1000.0).ToString("F2", CultureInfo.GetCultureInfo("de-DE"));
+            string paceValue = FormatPace(speedMetresPerSecond);
+            if (timerReadout != null)
+            {
+                timerReadout.text = "<mspace=34>" + timeValue + "</mspace>";
+                distanceReadout.text = "<mspace=16>" + distanceValue + "</mspace>";
+                paceReadout.text = "<mspace=16>" + paceValue + "</mspace>";
+            }
+            else if (statsReadout != null) statsReadout.text = activeRunner == null && activeTreadmillWorld == null
                 ? FormatStats("--:--", "--", "--:--", "--,--")
                 : FormatStats(
                     FormatPace(speedMetresPerSecond),
@@ -153,11 +137,11 @@ namespace StadionTracking
 
         private static string FormatStats(string pace, string laps, string time, string distanceKm)
         {
-            return $"<size=62%><color=#55EAF7>LAUFSESSION</color></size><pos=63%><size=60%><color=#D5E0EC>RUNDE {laps}</color></size>\n" +
-                "<size=50%><color=#C4CFDC>ZEIT</color></size>\n" +
-                $"<size=235%><color=#55EAF7><b>{time}</b></color></size>\n\n" +
-                "<size=55%><color=#C4CFDC>DISTANZ</color><pos=55%>PACE</size>\n" +
-                $"<size=130%><b>{distanceKm}</b> <size=55%>km</size><pos=55%><b>{pace}</b> <size=55%>min/km</size>";
+            return "<size=13><color=#E3DEF7>LAUFSESSION\nZEIT</color></size>\n" +
+                $"<size=56><color=#67E8F9><b>{time}</b></color></size>\n" +
+                "<size=13><color=#E3DEF7>DISTANZ                      PACE</color></size>\n" +
+                $"<size=28><color=#FFFFFF><b>{distanceKm}        {pace}</b></color></size>\n" +
+                "<size=13><color=#E3DEF7>km                              min/km</color></size>";
         }
     }
 }

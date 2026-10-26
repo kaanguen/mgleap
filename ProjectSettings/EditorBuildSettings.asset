@@ -5,12 +5,15 @@ EditorBuildSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 2
   m_Scenes:
-  - enabled: 0
-    path: Assets/Scenes/SampleScene.unity
-    guid: 9fc0d4010bbf28b4594072e72b8655ab
+  - enabled: 1
+    path: Assets/Scenes/RunnerMainMenu.unity
+    guid: 073d6e0c53212478eb1dd610ad558fcc
   - enabled: 1
     path: Assets/Scenes/TreadmillStraightTest.unity
     guid: 141808be24616450f9565fd0d28542e6
+  - enabled: 0
+    path: Assets/Scenes/SampleScene.unity
+    guid: 9fc0d4010bbf28b4594072e72b8655ab
   m_configObjects:
     com.unity.xr.arfoundation.simulation_settings: {fileID: 11400000, guid: 2cd7e600a434f443c8f7f1eed8c1cce9, type: 2}
     com.unity.xr.management.loader_settings: {fileID: 11400000, guid: 15e91bd561089491fa60c4c0ecf9af6b, type: 2}

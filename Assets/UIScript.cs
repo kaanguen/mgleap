@@ -160,25 +160,28 @@ public class UIScript : MonoBehaviour
     {
         bool connected = runner != null;
         if (textMesh != null)
-            textMesh.text = !connected ? "ZIELTEMPO  -- m/s"
-                : runner.PacingMode == StadiumPacingMode.TargetLapTime
-                    ? $"ZIELZEIT  {FormatLapTime(runner.TargetLapMinutes)} / RUNDE  |  {runner.RequestedSpeedMetresPerSecond:F2} m/s"
-                    : $"ZIELTEMPO  {runner.RequestedSpeedMetresPerSecond:F2} m/s";
+        {
+            bool timed = connected && runner.PacingMode == StadiumPacingMode.TargetLapTime;
+            string label = timed ? "ZIELZEIT / RUNDE" : "ZIELTEMPO";
+            string value = !connected ? "--" : timed ? FormatLapTime(runner.TargetLapMinutes) : runner.RequestedSpeedMetresPerSecond.ToString("F2");
+            textMesh.text = $"<size=13><color=#E3DEF7>{label}</color></size>\n<size=28><b>{value}</b></size>" +
+                (timed ? "" : " <size=13><color=#E3DEF7>m/s</color></size>");
+        }
         if (currentSpeedText != null)
             currentSpeedText.text = connected
-                ? $"<size=45%>AKTUELLES TEMPO</size>\n{runner.CurrentSpeed:F2} <size=55%>m/s</size>"
-                : "<size=45%>AKTUELLES TEMPO</size>\n-- <size=55%>m/s</size>";
+                ? $"<size=13><color=#E3DEF7>AKTUELLES TEMPO</color></size>\n{runner.CurrentSpeed:F2} <size=13><color=#E3DEF7>m/s</color></size>"
+                : "<size=13><color=#E3DEF7>AKTUELLES TEMPO</color></size>\n-- <size=13><color=#E3DEF7>m/s</color></size>";
         if (currentLapText != null)
             currentLapText.text = connected
-                ? $"<size=55%>AKTUELLE RUNDE</size>\n{runner.CurrentLap}"
-                : "<size=55%>AKTUELLE RUNDE</size>\n--";
+                ? $"<size=13>AKTUELLE RUNDE</size>\n{runner.CurrentLap}"
+                : "<size=13>AKTUELLE RUNDE</size>\n--";
         if (completedLapsText != null)
             completedLapsText.text = connected
-                ? $"<size=55%>GELAUFENE RUNDEN</size>\n{runner.CompletedLaps}"
-                : "<size=55%>GELAUFENE RUNDEN</size>\n--";
+                ? $"<size=13>GELAUFENE RUNDEN</size>\n{runner.CompletedLaps}"
+                : "<size=13>GELAUFENE RUNDEN</size>\n--";
         if (statusText != null)
-            statusText.text = !connected ? "RUNNER STATS  /  WARTE AUF AVATAR"
-                : $"RUNNER STATS  /  {(runner.CurrentSpeed > 0 ? "LÄUFT" : "PAUSE")}  /  BAHN {runner.Lane}";
+            statusText.text = !connected ? "WARTE AUF AVATAR"
+                : $"{(runner.CurrentSpeed > 0 ? "LÄUFT" : "PAUSE")}  /  BAHN {runner.Lane}";
         nextStatsRefresh = Time.unscaledTime + 0.1f;
     }
 
@@ -219,40 +222,13 @@ public class UIScript : MonoBehaviour
         row.layer = slider.gameObject.layer;
         row.transform.SetParent(slider.transform.parent, false);
         var rect = row.GetComponent<RectTransform>();
-        rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0.5f, 0.5f);
-        rect.anchoredPosition = new Vector2(0, -57);
-        rect.sizeDelta = new Vector2(84, 10);
-        manualModeButton = CreateModeButton(rect, "MANUELL", -21.5f, StadiumPacingMode.ManualSpeed);
-        targetTimeButton = CreateModeButton(rect, "ZIELZEIT", 21.5f, StadiumPacingMode.TargetLapTime);
-    }
-
-    private UnityEngine.UI.Button CreateModeButton(RectTransform parent, string title, float x, StadiumPacingMode mode)
-    {
-        var go = new GameObject(title, typeof(RectTransform), typeof(UnityEngine.UI.Image), typeof(UnityEngine.UI.Button));
-        go.layer = parent.gameObject.layer;
-        go.transform.SetParent(parent, false);
-        var rect = go.GetComponent<RectTransform>();
-        rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0.5f, 0.5f);
-        rect.anchoredPosition = new Vector2(x, 0);
-        rect.sizeDelta = new Vector2(41, 10);
-        var button = go.GetComponent<UnityEngine.UI.Button>();
-        button.targetGraphic = go.GetComponent<UnityEngine.UI.Image>();
-        button.onClick.AddListener(() => SelectPacingMode(mode));
-        var label = new GameObject("Label", typeof(RectTransform), typeof(TextMeshProUGUI));
-        label.layer = go.layer;
-        label.transform.SetParent(go.transform, false);
-        var labelRect = label.GetComponent<RectTransform>();
-        labelRect.anchorMin = Vector2.zero;
-        labelRect.anchorMax = Vector2.one;
-        labelRect.offsetMin = labelRect.offsetMax = Vector2.zero;
-        var text = label.GetComponent<TextMeshProUGUI>();
-        text.font = textMesh.font;
-        text.fontSize = 3;
-        text.alignment = TextAlignmentOptions.Center;
-        text.text = title;
-        text.color = Color.white;
-        text.raycastTarget = false;
-        return button;
+        rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0, 1);
+        rect.anchoredPosition = new Vector2(20, -252);
+        rect.sizeDelta = new Vector2(260, 40);
+        manualModeButton = RunnerUiTheme.Button("Manual", rect, "MANUELL", 0, 0, 124,
+            () => SelectPacingMode(StadiumPacingMode.ManualSpeed));
+        targetTimeButton = RunnerUiTheme.Button("Target", rect, "ZIELZEIT", 136, 0, 124,
+            () => SelectPacingMode(StadiumPacingMode.TargetLapTime));
     }
 
     private void RefreshPacingControls()
@@ -261,8 +237,8 @@ public class UIScript : MonoBehaviour
         bool connected = runner != null;
         manualModeButton.interactable = targetTimeButton.interactable = connected;
         bool timed = connected && runner.PacingMode == StadiumPacingMode.TargetLapTime;
-        Color active = new Color(0.09f, 0.40f, 0.48f);
-        Color inactive = new Color(0.15f, 0.19f, 0.23f);
+        Color active = new Color(1, 1, 1, .2f);
+        Color inactive = new Color(1, 1, 1, .07f);
         manualModeButton.targetGraphic.color = connected && !timed ? active : inactive;
         targetTimeButton.targetGraphic.color = timed ? active : inactive;
     }
@@ -276,7 +252,7 @@ public class UIScript : MonoBehaviour
         if (uiPanel != null && mainCamera != null)
         {
             uiPanel.worldCamera = mainCamera;
-            if (followUser)
+            if (followUser && uiPanel.GetComponent<RunnerArPanel>() == null)
             {
                 Transform head = mainCamera.transform;
                 Vector3 forward = Vector3.ProjectOnPlane(head.forward, Vector3.up);

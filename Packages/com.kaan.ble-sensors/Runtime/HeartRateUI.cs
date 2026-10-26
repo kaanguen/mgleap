@@ -30,19 +30,20 @@ public sealed class HeartRateUI : MonoBehaviour
         if (sensorDetailsText != null)
         {
             sensorDetailsText.richText = true;
-            sensorDetailsText.enableAutoSizing = true;
+            sensorDetailsText.enableAutoSizing = false;
+            sensorDetailsText.fontSize = 28;
             sensorDetailsText.fontSizeMin = 20;
             sensorDetailsText.fontSizeMax = 24;
-            sensorDetailsText.alignment = TextAlignmentOptions.Center;
+            sensorDetailsText.alignment = TextAlignmentOptions.MidlineLeft;
         }
         heartRateText.richText = true;
-        heartRateText.fontSize = 72;
-        heartRateText.alignment = TextAlignmentOptions.Center;
+        heartRateText.fontSize = 28;
+        heartRateText.alignment = TextAlignmentOptions.MidlineLeft;
         var heartRateLayout=heartRateText.GetComponent<UnityEngine.UI.LayoutElement>();
         if (heartRateLayout != null)
         {
-            heartRateLayout.minHeight=110;
-            heartRateLayout.preferredHeight=110;
+            heartRateLayout.minHeight=86;
+            heartRateLayout.preferredHeight=86;
         }
         var title=transform.Find("Panel/Title");
         if (title != null)
@@ -51,7 +52,7 @@ public sealed class HeartRateUI : MonoBehaviour
             if (titleText != null)
             {
                 titleText.text="VITALWERTE";
-                titleText.fontSize=30;
+                titleText.fontSize=13;
             }
         }
         sensor.Changed += Refresh;
@@ -77,7 +78,7 @@ public sealed class HeartRateUI : MonoBehaviour
     void Refresh()
     {
         statusText.text = bluetooth.Status;
-        heartRateText.text = "<size=40%><color=#AAB8C7><b>HERZFREQUENZ</b></color></size>\n"
+        heartRateText.text = "<size=13><color=#E3DEF7><b>HERZFREQUENZ</b></color></size>\n"
             +sensor.Measurement;
         if (sensorDetailsText != null && sensor != null) sensorDetailsText.text = sensor.Details;
         var names = new List<string>();

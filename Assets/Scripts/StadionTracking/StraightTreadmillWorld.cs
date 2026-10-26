@@ -22,6 +22,9 @@ namespace StadionTracking
         [SerializeField, Range(0f, 400f), Tooltip("Starting distance around the oval; 390 starts 10 m before the first bend.")]
         private float ovalStartMetres = 390f;
 
+        [SerializeField, Tooltip("Render the track while keeping running simulation active.")]
+        private bool showTrack = true;
+
         [Header("Placement")]
         [SerializeField] private Camera headCamera;
         [SerializeField, Tooltip("Align once to the initial horizontal view after head tracking is ready.")]
@@ -45,6 +48,12 @@ namespace StadionTracking
         private bool heightConfirmed;
         private readonly StadiumTrackGeometry oval = new StadiumTrackGeometry();
 
+        public bool ShowTrack
+        {
+            get => showTrack;
+            set { showTrack = value; SetTrackVisible(HeightConfirmed); }
+        }
+
         public float SpeedKmh
         {
             get => SanitizeSpeed(speedKmh);
@@ -61,7 +70,13 @@ namespace StadionTracking
         public Quaternion RunnerRotation => startRotation;
         public Camera HeadCamera => headCamera != null ? headCamera : Camera.main;
         public bool HeightConfirmed => heightConfirmed || !requireHeightCalibration;
+        public int BodyHeightCm => bodyHeightCm;
         public bool AutomaticHeightOnStart => automaticHeightOnStart;
+        public void SetBodyHeightCentimetres(int centimetres)
+        {
+            bodyHeightCm = Mathf.Clamp(centimetres, 80, 230);
+            automaticHeightOnStart = true;
+        }
 
         public bool HeadPoseReady
         {
@@ -271,7 +286,8 @@ namespace StadionTracking
 
         private void SetTrackVisible(bool visible)
         {
-            foreach (var renderer in GetComponentsInChildren<MeshRenderer>(true)) renderer.enabled = visible;
+            foreach (var renderer in GetComponentsInChildren<MeshRenderer>(true))
+                if (renderer.GetComponentInParent<Animator>() == null) renderer.enabled = visible && showTrack;
         }
 
         [ContextMenu("Reset travelled distance")]

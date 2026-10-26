@@ -6,7 +6,7 @@ namespace StadionTracking
     [RequireComponent(typeof(UnityEngine.UI.RawImage))]
     public sealed class RunnerMapMarker : MonoBehaviour
     {
-        [SerializeField] private Color markerColor = Color.red;
+        [SerializeField] private Color markerColor = RunnerUiTheme.Goal;
         [SerializeField, Range(0.005f, 0.1f)] private float markerWidthFraction = 0.025f;
 
         private UnityEngine.UI.RawImage map;
