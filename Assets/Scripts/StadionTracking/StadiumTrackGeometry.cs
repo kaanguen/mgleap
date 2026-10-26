@@ -5,6 +5,7 @@ namespace StadionTracking
 
     public sealed class StadiumTrackGeometry
     {
+        //Measurements from the IAAF Track and Field Facilities Manual, 2018 edition
 
         public const double StraightLength = 84.39;
 
