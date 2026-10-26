@@ -121,7 +121,7 @@ internal static class RunnerUiGuideSetup
 
     private static void StyleHud(Canvas canvas)
     {
-        PrepareCanvas(canvas, 317, 0);
+        PrepareCanvas(canvas, 330, 0);
         var legacyPanel = canvas.transform.Find("Panel");
         if (legacyPanel != null) legacyPanel.gameObject.SetActive(false);
         var display = canvas.GetComponent<ActiveStatsDisplay>();
@@ -138,12 +138,15 @@ internal static class RunnerUiGuideSetup
         var pace = RunnerUiTheme.Text("Pace", canvas.transform, "--:--", 156, 191, 124, 38, 28, true);
         RunnerUiTheme.Text("DistanceUnit", canvas.transform, "km", 20, 225, 124, 18, 13, false, true);
         RunnerUiTheme.Text("PaceUnit", canvas.transform, "min/km", 156, 225, 124, 18, 13, false, true);
-        RunnerUiTheme.Button("PauseSession", canvas.transform, "PAUSE", 20, 257, 124, null);
-        RunnerUiTheme.Button("BackToMenu", canvas.transform, "MENÜ", 156, 257, 124, null);
+        var checkpoint = RunnerUiTheme.Text("Checkpoint", canvas.transform, "100 m CHECKPOINT  |  BEISPIEL-PB 00:25.0",
+            20, 244, 260, 22, 13, false, true);
+        RunnerUiTheme.Button("PauseSession", canvas.transform, "PAUSE", 20, 280, 124, null);
+        RunnerUiTheme.Button("BackToMenu", canvas.transform, "MENÜ", 156, 280, 124, null);
         if (canvas.GetComponent<RunnerSessionNavigation>() == null) canvas.gameObject.AddComponent<RunnerSessionNavigation>();
         data.FindProperty("timerReadout").objectReferenceValue = timer;
         data.FindProperty("distanceReadout").objectReferenceValue = distance;
         data.FindProperty("paceReadout").objectReferenceValue = pace;
+        data.FindProperty("checkpointReadout").objectReferenceValue = checkpoint;
         data.ApplyModifiedPropertiesWithoutUndo();
     }
 

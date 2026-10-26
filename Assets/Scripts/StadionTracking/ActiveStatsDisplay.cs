@@ -11,6 +11,7 @@ namespace StadionTracking
         [SerializeField] private TMP_Text timerReadout;
         [SerializeField] private TMP_Text distanceReadout;
         [SerializeField] private TMP_Text paceReadout;
+        [SerializeField] private TMP_Text checkpointReadout;
         [SerializeField] private Camera headCamera;
         [SerializeField] private StraightTreadmillWorld treadmillWorld;
         [SerializeField, Range(0f, 0.25f)] private float horizontalMargin = 0.12f;
@@ -25,6 +26,7 @@ namespace StadionTracking
         private StraightTreadmillWorld timedTreadmillWorld;
         private float elapsedSeconds;
         private float nextRefresh;
+        private LapCheckpointTracker checkpointTracker = new LapCheckpointTracker(400.0, RunnerSessionSettings.PaceSeconds);
 
         private void Awake()
         {
@@ -32,6 +34,7 @@ namespace StadionTracking
                 statsCanvas = GetComponent<Canvas>();
             if (statsReadout == null)
                 statsReadout = GetComponentInChildren<TMP_Text>(true);
+            EnsureCheckpointReadout();
 
             if (statsCanvas == null || (statsReadout == null && timerReadout == null))
             {
@@ -51,6 +54,7 @@ namespace StadionTracking
             treadmillWorld = null;
             timedTreadmillWorld = null;
             elapsedSeconds = 0f;
+            checkpointTracker = new LapCheckpointTracker(activeRunner.LapLengthMetres, RunnerSessionSettings.PaceSeconds);
             nextRefresh = 0f;
         }
 
@@ -77,6 +81,9 @@ namespace StadionTracking
                 timedRunner = activeRunner;
                 timedTreadmillWorld = activeTreadmillWorld;
                 elapsedSeconds = 0f;
+                checkpointTracker = new LapCheckpointTracker(
+                    activeRunner != null ? activeRunner.LapLengthMetres : 400.0,
+                    RunnerSessionSettings.PaceSeconds);
             }
 
             double speedMetresPerSecond = activeRunner != null
@@ -93,6 +100,9 @@ namespace StadionTracking
 
             if (speedMetresPerSecond > 0f)
                 elapsedSeconds += Time.unscaledDeltaTime;
+
+            if (activeRunner != null || activeTreadmillWorld != null)
+                checkpointTracker.Update(travelledMetres, elapsedSeconds);
 
             if (Time.unscaledTime < nextRefresh)
                 return;
@@ -113,6 +123,10 @@ namespace StadionTracking
                     completedLaps.ToString(),
                     FormatElapsedTime(elapsedSeconds),
                     (travelledMetres / 1000.0).ToString("F2", CultureInfo.GetCultureInfo("de-DE")));
+            if (checkpointReadout != null)
+                checkpointReadout.text = activeRunner == null && activeTreadmillWorld == null
+                    ? "CHECKPOINT --"
+                    : FormatCheckpointStatus(checkpointTracker);
             nextRefresh = Time.unscaledTime + refreshInterval;
         }
 
@@ -133,6 +147,74 @@ namespace StadionTracking
             int minutes = totalSeconds / 60 % 60;
             int seconds = totalSeconds % 60;
             return hours > 0 ? $"{hours}:{minutes:00}:{seconds:00}" : $"{minutes:00}:{seconds:00}";
+        }
+
+        private void EnsureCheckpointReadout()
+        {
+            if (checkpointReadout != null || statsCanvas == null)
+                return;
+
+            Transform canvasTransform = statsCanvas.transform;
+            checkpointReadout = canvasTransform.Find("Checkpoint")?.GetComponent<TMP_Text>();
+            if (checkpointReadout == null)
+            {
+                var source = timerReadout != null ? timerReadout : statsReadout;
+                if (source == null)
+                    return;
+
+                var readoutObject = new GameObject("Checkpoint", typeof(RectTransform), typeof(TextMeshProUGUI));
+                readoutObject.layer = canvasTransform.gameObject.layer;
+                var rect = (RectTransform)readoutObject.transform;
+                rect.SetParent(canvasTransform, false);
+                rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0, 1);
+                rect.anchoredPosition = new Vector2(20, -244);
+                rect.sizeDelta = new Vector2(260, 22);
+                checkpointReadout = readoutObject.GetComponent<TextMeshProUGUI>();
+                checkpointReadout.font = source.font;
+                checkpointReadout.fontSharedMaterial = source.fontSharedMaterial;
+                checkpointReadout.color = RunnerUiTheme.Label;
+                checkpointReadout.fontSize = 13;
+                checkpointReadout.alignment = TextAlignmentOptions.MidlineLeft;
+                checkpointReadout.enableAutoSizing = false;
+                checkpointReadout.raycastTarget = false;
+            }
+
+            RectTransform canvasRect = (RectTransform)canvasTransform;
+            canvasRect.sizeDelta = new Vector2(canvasRect.sizeDelta.x, Mathf.Max(330, canvasRect.sizeDelta.y));
+            MoveHudButton(canvasTransform, "PauseSession", 280);
+            MoveHudButton(canvasTransform, "BackToMenu", 280);
+        }
+
+        private static void MoveHudButton(Transform canvasTransform, string buttonName, float top)
+        {
+            Transform button = canvasTransform.Find(buttonName);
+            if (button is RectTransform rect)
+                rect.anchoredPosition = new Vector2(rect.anchoredPosition.x, -top);
+        }
+
+        private static string FormatCheckpointStatus(LapCheckpointTracker tracker)
+        {
+            if (!tracker.HasCheckpointResult)
+                return $"{tracker.NextCheckpointLabel} CHECKPOINT  |  " +
+                    $"{(tracker.BestLapIsExample ? "BEISPIEL-PB" : "BESTZEIT")} " +
+                    $"{FormatSplitTime(tracker.NextCheckpointBestSeconds)}";
+
+            string comparison = tracker.LastCheckpointDeltaSeconds < -0.05
+                ? (tracker.LastCheckpointIsRecord
+                    ? $"REKORD -{FormatSplitTime(-tracker.LastCheckpointDeltaSeconds)}"
+                    : $"{FormatSplitTime(-tracker.LastCheckpointDeltaSeconds)} schneller")
+                : tracker.LastCheckpointDeltaSeconds > 0.05
+                    ? $"{FormatSplitTime(tracker.LastCheckpointDeltaSeconds)} langsamer"
+                    : "gleichauf mit BESTZEIT";
+
+            return $"{tracker.LastCheckpointLabel}  |  {comparison}";
+        }
+
+        private static string FormatSplitTime(double seconds)
+        {
+            double absSec = System.Math.Abs(seconds);
+            int totalTenths = Mathf.RoundToInt((float)(absSec * 10));
+            return $"{totalTenths / 600:00}:{totalTenths / 10 % 60:00}.{totalTenths % 10}";
         }
 
         private static string FormatStats(string pace, string laps, string time, string distanceKm)

@@ -34,6 +34,7 @@ namespace StadionTracking
             RequestedSpeedFraction = float.IsNaN(fraction) || float.IsInfinity(fraction) ? 0f : Mathf.Clamp01(fraction);
         }
         public double CurrentSpeed => _run.CurrentSpeed;
+        public double LapLengthMetres => _run.LapLengthMetres;
         public long CurrentLap => _run.CurrentLap;
         public long CompletedLaps => _run.CompletedLaps;
         public double TravelledMetres => _run.TravelledMetres;
