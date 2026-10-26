@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using UnityEngine;
 using UnityEngine.XR;
 using Unity.XR.CoreUtils;
@@ -29,6 +30,10 @@ namespace StadionTracking
         private float surfaceHeight;
         [SerializeField, Tooltip("Show the height setup before placing or moving the track.")]
         private bool requireHeightCalibration = true;
+        [SerializeField, Tooltip("Place directly from fixed body height, independently of the optional UI object.")]
+        private bool automaticHeightOnStart = true;
+        [SerializeField, Range(80, 230)] private int bodyHeightCm = 184;
+        [SerializeField, Range(0, 25)] private float headTopToEyeCm = 12f;
 
         [Header("Live readout")]
         [SerializeField] private double travelledMetres;
@@ -50,8 +55,11 @@ namespace StadionTracking
         public long CompletedLaps => (long)(travelledMetres / 400.0);
         public double MetresIntoLap => travelledMetres % 400.0;
         public bool PlacementReady => placementReady;
+        public Vector3 RunnerGroundPosition => startPosition;
+        public Quaternion RunnerRotation => startRotation;
         public Camera HeadCamera => headCamera != null ? headCamera : Camera.main;
         public bool HeightConfirmed => heightConfirmed || !requireHeightCalibration;
+        public bool AutomaticHeightOnStart => automaticHeightOnStart;
 
         public bool HeadPoseReady
         {
@@ -77,6 +85,28 @@ namespace StadionTracking
                 Debug.LogError("[Treadmill] Assign the tracked head camera to VirtualWorld.", this);
             SetTrackVisible(HeightConfirmed);
             Debug.Log($"[Treadmill] World ready; scene={gameObject.scene.name}, calibrationRequired={requireHeightCalibration}, head={headCamera}.");
+            if (automaticHeightOnStart && !HeightConfirmed) StartCoroutine(PlaceAutomatically());
+        }
+
+        private IEnumerator PlaceAutomatically()
+        {
+            float trackedFor = 0f;
+            float nextReport = Time.realtimeSinceStartup + 5f;
+            while (!HeightConfirmed)
+            {
+                trackedFor = HeadPoseReady ? trackedFor + Time.unscaledDeltaTime : 0f;
+                if (trackedFor >= 0.5f && CalibrateFromEyeHeight((bodyHeightCm - headTopToEyeCm) / 100f))
+                {
+                    Debug.Log($"[Treadmill] Automatic world placement ready: body={bodyHeightCm} cm; optional menu is not required.");
+                    yield break;
+                }
+                if (Time.realtimeSinceStartup >= nextReport)
+                {
+                    Debug.LogWarning($"[Treadmill] Waiting for head pose/forward direction; camera={HeadCamera}, tracked={HeadPoseReady}.");
+                    nextReport = Time.realtimeSinceStartup + 5f;
+                }
+                yield return null;
+            }
         }
 
         private void Update()

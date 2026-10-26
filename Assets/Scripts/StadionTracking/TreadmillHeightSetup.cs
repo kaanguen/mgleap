@@ -29,6 +29,13 @@ namespace StadionTracking
         {
             if (world == null) world = FindFirstObjectByType<StraightTreadmillWorld>();
             if (world == null) { Debug.LogError("[Treadmill] Height setup cannot find VirtualWorld."); enabled = false; return; }
+            if (world.AutomaticHeightOnStart)
+            {
+                // The world owns automatic placement; disabling this optional menu must be safe.
+                if (canvas != null) canvas.gameObject.SetActive(false);
+                enabled = false;
+                return;
+            }
             requestedSpeed = world.SpeedKmh;
             world.SpeedKmh = 0;
             world.BeginHeightCalibration();

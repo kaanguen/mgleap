@@ -95,12 +95,10 @@ internal static class StraightTreadmillSetup
     {
         if (EditorApplication.isPlayingOrWillChangePlaymode || SceneManager.GetActiveScene().path != ScenePath)
             throw new InvalidOperationException("Open the treadmill test scene outside Play mode first.");
-        var setup = UnityEngine.Object.FindFirstObjectByType<TreadmillHeightSetup>(FindObjectsInactive.Include);
-        if (setup == null) throw new InvalidOperationException("Height setup is missing.");
-        setup.gameObject.SetActive(true);
-        setup.enabled = true;
-        var data = new SerializedObject(setup);
-        data.FindProperty("skipHeightMenu").boolValue = true;
+        var world = UnityEngine.Object.FindFirstObjectByType<StraightTreadmillWorld>();
+        if (world == null) throw new InvalidOperationException("VirtualWorld is missing.");
+        var data = new SerializedObject(world);
+        data.FindProperty("automaticHeightOnStart").boolValue = true;
         data.FindProperty("bodyHeightCm").intValue = 184;
         data.ApplyModifiedPropertiesWithoutUndo();
         EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
@@ -111,11 +109,11 @@ internal static class StraightTreadmillSetup
     public static void VerifyAutomaticPlacement()
     {
         if (!EditorApplication.isPlaying) throw new InvalidOperationException("Enter Play mode first.");
-        var setup = UnityEngine.Object.FindFirstObjectByType<TreadmillHeightSetup>();
+        var setup = UnityEngine.Object.FindFirstObjectByType<TreadmillHeightSetup>(FindObjectsInactive.Include);
         var world = UnityEngine.Object.FindFirstObjectByType<StraightTreadmillWorld>();
-        Require(setup != null && world != null, "fixed-height setup exists");
+        Require(world != null && world.AutomaticHeightOnStart, "world owns fixed-height setup");
         Require(world.PlacementReady && world.HeightConfirmed, "automatic placement completed");
-        Require(setup.GetComponentInChildren<Canvas>(true).gameObject.activeSelf == false, "no menu interaction needed");
+        Require(setup == null || !setup.GetComponentInChildren<Canvas>(true).gameObject.activeInHierarchy, "no menu interaction needed");
         Require(Math.Abs(world.transform.position.y - (world.HeadCamera.transform.position.y - 1.72f)) < 0.02f,
             "184 cm body height places surface below estimated eyes");
         foreach (var renderer in world.GetComponentsInChildren<MeshRenderer>())
