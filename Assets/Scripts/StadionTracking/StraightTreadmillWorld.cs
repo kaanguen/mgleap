@@ -66,6 +66,8 @@ namespace StadionTracking
         public long CompletedLaps => (long)(travelledMetres / 400.0);
         public double MetresIntoLap => travelledMetres % 400.0;
         public bool PlacementReady => placementReady;
+        // A physical belt stop leaves the race clock running; only explicit session pause stops it.
+        public bool SessionPaused { get; set; }
         public Vector3 RunnerGroundPosition => startPosition;
         public Quaternion RunnerRotation => startRotation;
         public Camera HeadCamera => headCamera != null ? headCamera : Camera.main;
@@ -183,7 +185,7 @@ namespace StadionTracking
         // The tile pattern is periodic, so wrapping keeps coordinates small on long runs.
         public void AdvanceSimulation(float elapsedSeconds)
         {
-            if (!HeightConfirmed || !placementReady || float.IsNaN(elapsedSeconds) || float.IsInfinity(elapsedSeconds)
+            if (SessionPaused || !HeightConfirmed || !placementReady || float.IsNaN(elapsedSeconds) || float.IsInfinity(elapsedSeconds)
                 || elapsedSeconds <= 0f || SpeedKmh <= 0f) return;
 
             double distance = (double)SpeedKmh / 3.6 * elapsedSeconds;

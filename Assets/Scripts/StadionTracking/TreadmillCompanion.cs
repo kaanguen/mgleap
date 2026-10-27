@@ -5,11 +5,11 @@ namespace StadionTracking
 {
     public enum TreadmillRunMode
     {
-        SideBySide,
-        Pacer
+        SideBySide = 0,
+        TempoPartner = 1
     }
 
-    /// <summary>A companion at the same virtual progress as the treadmill runner.</summary>
+    /// <summary>Owns the side-by-side avatar; the tempo partner is rendered by LapGhostPlayback.</summary>
     public sealed class TreadmillCompanion : MonoBehaviour
     {
         [SerializeField] private StraightTreadmillWorld world;
@@ -17,8 +17,6 @@ namespace StadionTracking
         [SerializeField] private TreadmillRunMode runMode = TreadmillRunMode.SideBySide;
         [SerializeField, Tooltip("Offset in metres from the calibrated belt: positive X is the right-hand neighbouring lane.")]
         private Vector3 sideOffset = new Vector3(1.22f, 0f, 0f);
-        [SerializeField, Min(0.5f), Tooltip("Pacer lead along the actual track in metres; follows bends rather than a straight offset.")]
-        private float pacerLeadMetres = 3f;
         private GameObject avatar;
         private Animator animator;
         private float soleOffset;
@@ -29,17 +27,18 @@ namespace StadionTracking
         private static readonly int Rate = UnityEngine.Animator.StringToHash("locomotionRate");
 
         public GameObject Avatar => avatar;
+        public GameObject AvatarPrefab => avatarPrefab;
+        public StraightTreadmillWorld World => world;
         public Animator Animator => animator;
         public float AppliedSpeedMetresPerSecond { get; private set; }
         public TreadmillRunMode Mode
         {
             get => runMode;
-            set => runMode = value == TreadmillRunMode.Pacer ? TreadmillRunMode.Pacer : TreadmillRunMode.SideBySide;
-        }
-        public float PacerLeadMetres
-        {
-            get => pacerLeadMetres;
-            set => pacerLeadMetres = float.IsNaN(value) || float.IsInfinity(value) ? 3f : Mathf.Max(0.5f, value);
+            set
+            {
+                runMode = value == TreadmillRunMode.TempoPartner ? TreadmillRunMode.TempoPartner : TreadmillRunMode.SideBySide;
+                if (runMode == TreadmillRunMode.TempoPartner && avatar != null) avatar.SetActive(false);
+            }
         }
         public Vector3 GroundPosition
         {
@@ -54,20 +53,15 @@ namespace StadionTracking
 
         private void GetGroundPose(out Vector3 position, out Quaternion rotation)
         {
-            if (runMode == TreadmillRunMode.Pacer)
-                world.GetRunningPose(PacerLeadMetres, out position, out rotation);
-            else
-            {
-                position = world.RunnerGroundPosition + world.RunnerRotation * sideOffset;
-                rotation = world.RunnerRotation;
-            }
+            position = world.RunnerGroundPosition + world.RunnerRotation * sideOffset;
+            rotation = world.RunnerRotation;
         }
 
         private void LateUpdate() => Synchronize();
 
         public void Synchronize()
         {
-            if (world == null || !world.PlacementReady || !world.HeightConfirmed)
+            if (runMode == TreadmillRunMode.TempoPartner || world == null || !world.PlacementReady || !world.HeightConfirmed)
             {
                 if (avatar != null) avatar.SetActive(false);
                 return;
@@ -169,6 +163,5 @@ namespace StadionTracking
             if (avatar != null) avatar.SetActive(false);
         }
 
-        private void OnValidate() => PacerLeadMetres = pacerLeadMetres;
     }
 }

@@ -179,7 +179,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: PACER
+  m_text: "\u2022 TEMPO-\nPARTNER"
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: c1065666916304c6fbb8442516b4fd53, type: 2}
   m_sharedMaterial: {fileID: 8413146709551660658, guid: c1065666916304c6fbb8442516b4fd53, type: 2}
@@ -1726,7 +1726,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: 6:00
+  m_text: <mspace=16>6:00</mspace> <size=13><color=#E3DEF7>min/km</color></size>
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: c1065666916304c6fbb8442516b4fd53, type: 2}
   m_sharedMaterial: {fileID: 8413146709551660658, guid: c1065666916304c6fbb8442516b4fd53, type: 2}
@@ -1898,7 +1898,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_Material: {fileID: 2100000, guid: 1b0cdcde9b48e4c9aae769bd9b3a9768, type: 2}
-  m_Color: {r: 1, g: 1, b: 1, a: 0.07}
+  m_Color: {r: 1, g: 1, b: 1, a: 0.2}
   m_RaycastTarget: 1
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
@@ -3671,7 +3671,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_Material: {fileID: 2100000, guid: 1b0cdcde9b48e4c9aae769bd9b3a9768, type: 2}
-  m_Color: {r: 1, g: 1, b: 1, a: 0.07}
+  m_Color: {r: 1, g: 1, b: 1, a: 0.2}
   m_RaycastTarget: 1
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
@@ -4140,7 +4140,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: 184
+  m_text: <mspace=16>184</mspace> <size=13><color=#E3DEF7>cm</color></size>
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: c1065666916304c6fbb8442516b4fd53, type: 2}
   m_sharedMaterial: {fileID: 8413146709551660658, guid: c1065666916304c6fbb8442516b4fd53, type: 2}
@@ -4274,7 +4274,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: "Avatar l\xE4uft neben dir."
+  m_text: "Erst deine Zielpace, sp\xE4ter deine beste Runde."
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: c1065666916304c6fbb8442516b4fd53, type: 2}
   m_sharedMaterial: {fileID: 8413146709551660658, guid: c1065666916304c6fbb8442516b4fd53, type: 2}

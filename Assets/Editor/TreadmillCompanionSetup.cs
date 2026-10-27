@@ -37,8 +37,10 @@ internal static class TreadmillCompanionSetup
         var world = UnityEngine.Object.FindFirstObjectByType<StraightTreadmillWorld>();
         Check(companion != null && world != null && world.PlacementReady, "companion and world ready");
         float originalSpeed = world.SpeedKmh;
+        var originalMode = companion.Mode;
         try
         {
+            companion.SetMode(TreadmillRunMode.SideBySide);
             companion.Synchronize();
             var avatar = companion.Avatar;
             Check(avatar != null && avatar.activeInHierarchy && companion.Animator != null, "animated avatar spawned");
@@ -63,7 +65,12 @@ internal static class TreadmillCompanionSetup
             Check(companion.Avatar == avatar && companion.transform.childCount == 1, "one companion only");
             Debug.Log("[Treadmill] PASS: companion spawn, neighbouring lane, shared speed, curves, animation and pause.");
         }
-        finally { world.SpeedKmh = originalSpeed; companion.Synchronize(); }
+        finally
+        {
+            world.SpeedKmh = originalSpeed;
+            companion.SetMode(originalMode);
+            companion.Synchronize();
+        }
     }
 
     private static void Check(bool value, string label)

@@ -579,6 +579,7 @@ public class MarkerAndAnchorTracker : MonoBehaviour
                     {
 
                         marker.TrackPreview = preview;
+                        preview.GhostAvatarPrefab = _markerPrefab;
                         surfacePosition = entryPosition;
                         worldPosition = entryPosition;
                     }

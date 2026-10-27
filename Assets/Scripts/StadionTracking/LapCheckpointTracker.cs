@@ -23,6 +23,9 @@ namespace StadionTracking
         private double checkpointDisplayUntilTime;
         private double last100mTime;
         private double lastKmTime;
+        private double lastSegmentDistance;
+        private double lastKmDistance;
+        private bool completeLap;
 
         public LapCheckpointTracker(double lapLengthMetres = 400, double targetPaceSecondsPerKm = 0)
         {
@@ -33,7 +36,8 @@ namespace StadionTracking
             checkpointLengthMetres = lapLengthMetres / CheckpointsPerLap;
 
             // When no custom pace is provided (e.g. in standalone tests), default to 250 s/km (100 s per 400 m lap, 25 s / 100 m)
-            this.targetPaceSecondsPerKm = targetPaceSecondsPerKm > 0 ? targetPaceSecondsPerKm : 250.0;
+            this.targetPaceSecondsPerKm = targetPaceSecondsPerKm > 0 && !double.IsInfinity(targetPaceSecondsPerKm)
+                ? targetPaceSecondsPerKm : 250.0;
             bestLapSeconds = this.targetPaceSecondsPerKm * (lapLengthMetres / 1000.0);
 
             for (int i = 0; i < CheckpointsPerLap; i++)
@@ -48,6 +52,9 @@ namespace StadionTracking
         }
 
         public double BestLapSeconds => bestLapSeconds;
+        public double LapLengthMetres => lapLengthMetres;
+        public double LapElapsedSeconds => Math.Max(0, lastElapsedSeconds - lapStartedAt);
+        public LapGhostRecording GhostRecording { get; } = new LapGhostRecording();
         public bool BestLapIsExample { get; private set; } = true;
         public bool HasCheckpointResult { get; private set; }
         public double LastCheckpointMetres { get; private set; }
@@ -72,28 +79,23 @@ namespace StadionTracking
                 travelledMetres < 0 || elapsedSeconds < 0)
                 return;
 
-            if (!initialized || travelledMetres < lastDistance)
+            if (!initialized || travelledMetres < lastDistance || elapsedSeconds < lastElapsedSeconds)
             {
                 lastDistance = travelledMetres;
                 lastElapsedSeconds = elapsedSeconds;
                 lapStartedAt = elapsedSeconds;
                 last100mTime = elapsedSeconds;
                 lastKmTime = elapsedSeconds;
+                lastSegmentDistance = travelledMetres;
+                lastKmDistance = travelledMetres;
+                completeLap = travelledMetres % lapLengthMetres == 0;
+                GhostRecording.Begin(travelledMetres, elapsedSeconds, completeLap);
                 initialized = true;
                 HasCheckpointResult = false;
                 Array.Clear(currentCheckpointTimes, 0, currentCheckpointTimes.Length);
                 long initialIdx = (long)Math.Floor((travelledMetres % lapLengthMetres) / checkpointLengthMetres);
                 UpdateNextCheckpoint(initialIdx, travelledMetres);
                 return;
-            }
-
-            // Keep checkpoint result visible for 20 metres or up to 6 seconds, then switch back to upcoming preview
-            if (HasCheckpointResult)
-            {
-                if (travelledMetres >= checkpointDisplayUntilDistance || elapsedSeconds >= checkpointDisplayUntilTime)
-                {
-                    HasCheckpointResult = false;
-                }
             }
 
             if (travelledMetres > lastDistance)
@@ -106,10 +108,18 @@ namespace StadionTracking
                     double fraction = (boundaryDistance - lastDistance) / (travelledMetres - lastDistance);
                     double checkpointTime = lastElapsedSeconds +
                         (elapsedSeconds - lastElapsedSeconds) * fraction;
+                    GhostRecording.Record(boundaryDistance, checkpointTime, true);
                     ProcessCheckpoint(boundary, boundaryDistance, checkpointTime);
                 }
             }
 
+            // Expire after processing crossings too: a delayed sample may already
+            // be more than 20 metres or 6 seconds past the latest checkpoint.
+            if (HasCheckpointResult && (travelledMetres >= checkpointDisplayUntilDistance ||
+                elapsedSeconds >= checkpointDisplayUntilTime))
+                HasCheckpointResult = false;
+
+            GhostRecording.Record(travelledMetres, elapsedSeconds);
             lastDistance = travelledMetres;
             lastElapsedSeconds = elapsedSeconds;
             long checkpointIndex = (long)Math.Floor((travelledMetres % lapLengthMetres) / checkpointLengthMetres);
@@ -125,16 +135,16 @@ namespace StadionTracking
 
             // 100m segment tracking
             double seg100m = Math.Max(0, checkpointTime - last100mTime);
+            bool full100mSegment = Math.Abs(boundaryDistance - lastSegmentDistance - 100.0) < 0.001;
+            lastSegmentDistance = boundaryDistance;
             last100mTime = checkpointTime;
-            bool is100mRecord = false;
-            if (seg100m > 0 && (BestLapIsExample || seg100m < Fastest100mSeconds))
+            if (full100mSegment && seg100m > 0 && seg100m < Fastest100mSeconds)
             {
                 Fastest100mSeconds = seg100m;
-                is100mRecord = true;
             }
 
             double delta = splitTime - bestSplitTime;
-            bool isRecord = delta < -0.05 || is100mRecord;
+            bool isRecord = completeLap && delta < -0.05;
 
             LastCheckpointMetres = checkpointLengthMetres * (checkpointIndex + 1);
             LastCheckpointDeltaSeconds = delta;
@@ -158,12 +168,15 @@ namespace StadionTracking
                 }
 
                 double seg1Km = Math.Max(0, checkpointTime - lastKmTime);
+                bool fullKmSegment = Math.Abs(boundaryDistance - lastKmDistance - 1000.0) < 0.001;
+                lastKmDistance = boundaryDistance;
                 lastKmTime = checkpointTime;
-                if (seg1Km > 0 && (BestLapIsExample || seg1Km < Fastest1KmSeconds))
+                if (fullKmSegment && seg1Km > 0 && seg1Km < Fastest1KmSeconds)
                 {
                     Fastest1KmSeconds = seg1Km;
                 }
 
+                LastCheckpointMetres = boundaryDistance;
                 LastCheckpointLabel = $"{kmIndex} km";
                 LastCheckpointDeltaSeconds = kmDelta;
                 LastCheckpointIsRecord = isKmRecord;
@@ -180,17 +193,18 @@ namespace StadionTracking
             // Lap finish (400 m)
             if (checkpointIndex == CheckpointsPerLap - 1)
             {
-                if (splitTime < bestLapSeconds)
+                bool isNewBest = completeLap && splitTime > 0 && splitTime < bestLapSeconds;
+                if (isNewBest)
                 {
                     bestLapSeconds = splitTime;
-                    for (int i = 0; i < CheckpointsPerLap; i++)
-                    {
-                        bestCheckpointTimes[i] = bestLapSeconds * (i + 1) / CheckpointsPerLap;
-                    }
+                    Array.Copy(currentCheckpointTimes, bestCheckpointTimes, CheckpointsPerLap);
                     BestLapIsExample = false;
-                    LastCheckpointIsRecord = true;
+                    if (!isKmMark)
+                        LastCheckpointIsRecord = true;
                 }
 
+                GhostRecording.Finish(boundaryDistance, checkpointTime, isNewBest);
+                completeLap = true;
                 lapStartedAt = checkpointTime;
                 Array.Clear(currentCheckpointTimes, 0, currentCheckpointTimes.Length);
             }

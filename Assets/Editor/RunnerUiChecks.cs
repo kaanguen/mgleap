@@ -11,7 +11,7 @@ internal static class RunnerUiChecks
     static void Require(bool condition, string message) { if (!condition) throw new InvalidOperationException("[RunnerUI] " + message); }
     static RunnerMainMenu Menu() { Require(Application.isPlaying, "Enter Play mode first."); return UnityEngine.Object.FindFirstObjectByType<RunnerMainMenu>(); }
 
-    [MenuItem("Tools/Runner UI/Checks/Check menu and start Pacer session")]
+    [MenuItem("Tools/Runner UI/Checks/Check menu and start tempo partner session")]
     static void CheckMenu()
     {
         var menu = Menu(); Require(menu != null, "Main menu missing.");
@@ -24,7 +24,7 @@ internal static class RunnerUiChecks
         menu.transform.Find("SideBySide").GetComponent<Button>().onClick.Invoke();
         Require(menu.Mode == TreadmillRunMode.SideBySide, "Side mode button.");
         menu.transform.Find("Pacer").GetComponent<Button>().onClick.Invoke();
-        Require(menu.Mode == TreadmillRunMode.Pacer, "Pacer button.");
+        Require(menu.Mode == TreadmillRunMode.TempoPartner, "Tempo partner button.");
         RunnerSessionSettings.ShowTrack = true;
         menu.Refresh();
         var toggle = menu.transform.Find("TrackVisibility").GetComponent<Button>();
@@ -33,7 +33,7 @@ internal static class RunnerUiChecks
         toggle.onClick.Invoke();
         CheckPanels();
         menu.transform.Find("StartSession").GetComponent<Button>().onClick.Invoke();
-        Debug.Log("[RunnerUI CHECK] Menu buttons and boundaries passed; loading 6:15 / 183 cm / Pacer.");
+        Debug.Log("[RunnerUI CHECK] Menu buttons and boundaries passed; loading 6:15 / 183 cm / Tempo-Partner.");
     }
 
     [MenuItem("Tools/Runner UI/Checks/Check track and pause")]
@@ -44,13 +44,15 @@ internal static class RunnerUiChecks
         Require(Mathf.Abs(world.PaceSecondsPerKilometre - 375) < .1f, "Pace was not passed to track.");
         Require(world.BodyHeightCm == 183, "Height was not passed to track.");
         var companion = UnityEngine.Object.FindFirstObjectByType<TreadmillCompanion>();
-        Require(companion != null && companion.Mode == TreadmillRunMode.Pacer, "Pacer mode was not passed.");
+        Require(companion != null && companion.Mode == TreadmillRunMode.TempoPartner, "Tempo partner mode was not passed.");
         Require(!world.ShowTrack, "Track visibility setting was not passed.");
         var surfaces = world.GetComponentsInChildren<MeshRenderer>(true);
         Require(surfaces.Length > 0, "Track geometry missing.");
         foreach (var surface in surfaces)
             if (surface.GetComponentInParent<Animator>() == null) Require(!surface.enabled, "Hidden track is visible.");
-        var avatar = companion.GetComponentInChildren<Animator>();
+        var playback = UnityEngine.Object.FindFirstObjectByType<LapGhostPlayback>();
+        var avatar = playback != null && playback.Avatar != null ? playback.Avatar.GetComponentInChildren<Animator>() : null;
+        Require(companion.Avatar == null || !companion.Avatar.activeInHierarchy, "Only the tempo partner may be visible.");
         Require(avatar != null && avatar.gameObject.activeInHierarchy, "Avatar must remain active without track.");
         foreach (var renderer in avatar.GetComponentsInChildren<SkinnedMeshRenderer>())
             Require(renderer.enabled, "Avatar must remain visible without track.");

@@ -12,6 +12,7 @@ namespace StadionTracking
         [SerializeField] private TMP_Text distanceReadout;
         [SerializeField] private TMP_Text paceReadout;
         [SerializeField] private TMP_Text checkpointReadout;
+        private TMP_Text partnerReadout;
         [SerializeField] private Camera headCamera;
         [SerializeField] private StraightTreadmillWorld treadmillWorld;
         [SerializeField, Range(0f, 0.25f)] private float horizontalMargin = 0.12f;
@@ -26,6 +27,9 @@ namespace StadionTracking
         private StraightTreadmillWorld timedTreadmillWorld;
         private float elapsedSeconds;
         private float nextRefresh;
+        private bool sessionStarted;
+        private double previousDistance;
+        private LapGhostPlayback ghostPlayback;
         private LapCheckpointTracker checkpointTracker = new LapCheckpointTracker(400.0, RunnerSessionSettings.PaceSeconds);
 
         private void Awake()
@@ -35,6 +39,9 @@ namespace StadionTracking
             if (statsReadout == null)
                 statsReadout = GetComponentInChildren<TMP_Text>(true);
             EnsureCheckpointReadout();
+            EnsurePartnerReadout();
+            ghostPlayback = GetComponent<LapGhostPlayback>();
+            if (ghostPlayback == null) ghostPlayback = gameObject.AddComponent<LapGhostPlayback>();
 
             if (statsCanvas == null || (statsReadout == null && timerReadout == null))
             {
@@ -55,6 +62,9 @@ namespace StadionTracking
             timedTreadmillWorld = null;
             elapsedSeconds = 0f;
             checkpointTracker = new LapCheckpointTracker(activeRunner.LapLengthMetres, RunnerSessionSettings.PaceSeconds);
+            checkpointTracker.Update(0, 0);
+            sessionStarted = false;
+            previousDistance = 0;
             nextRefresh = 0f;
         }
 
@@ -84,6 +94,9 @@ namespace StadionTracking
                 checkpointTracker = new LapCheckpointTracker(
                     activeRunner != null ? activeRunner.LapLengthMetres : 400.0,
                     RunnerSessionSettings.PaceSeconds);
+                checkpointTracker.Update(0, 0);
+                sessionStarted = false;
+                previousDistance = 0;
             }
 
             double speedMetresPerSecond = activeRunner != null
@@ -98,11 +111,27 @@ namespace StadionTracking
                 ? activeRunner.TravelledMetres
                 : activeTreadmillWorld != null ? activeTreadmillWorld.TravelledMetres : 0.0;
 
-            if (speedMetresPerSecond > 0f)
-                elapsedSeconds += Time.unscaledDeltaTime;
+            if (travelledMetres < previousDistance)
+            {
+                elapsedSeconds = 0;
+                sessionStarted = false;
+                checkpointTracker.Update(travelledMetres, 0);
+            }
+            previousDistance = travelledMetres;
+            bool ready = activeRunner != null || (activeTreadmillWorld != null &&
+                activeTreadmillWorld.PlacementReady && activeTreadmillWorld.HeightConfirmed);
+            bool explicitlyPaused = activeRunner != null
+                ? activeRunner.RequestedSpeedFraction <= 0f
+                : activeTreadmillWorld != null && activeTreadmillWorld.SessionPaused;
+            if (ready && !explicitlyPaused && speedMetresPerSecond > 0) sessionStarted = true;
+            bool clockRunning = ready && sessionStarted && !explicitlyPaused && Time.timeScale > 0;
+            // A belt speed of zero counts as time lost; the explicit Pause button freezes the race.
+            // Match the scaled clock used by both movement simulations.
+            if (clockRunning) elapsedSeconds += Time.deltaTime;
 
             if (activeRunner != null || activeTreadmillWorld != null)
                 checkpointTracker.Update(travelledMetres, elapsedSeconds);
+            ghostPlayback.Synchronize(checkpointTracker, activeRunner, activeTreadmillWorld, clockRunning);
 
             if (Time.unscaledTime < nextRefresh)
                 return;
@@ -127,7 +156,33 @@ namespace StadionTracking
                 checkpointReadout.text = activeRunner == null && activeTreadmillWorld == null
                     ? "CHECKPOINT --"
                     : FormatCheckpointStatus(checkpointTracker);
+            if (partnerReadout != null)
+            {
+                partnerReadout.gameObject.SetActive(ghostPlayback.IsPartnerActive);
+                partnerReadout.text = checkpointTracker.GhostRecording.HasRecording
+                    ? $"BESTE RUNDE {FormatSplitTime(checkpointTracker.BestLapSeconds)}"
+                    : $"ZIELPACE {RunnerSessionSettings.PaceSeconds / 60}:{RunnerSessionSettings.PaceSeconds % 60:00} min/km";
+            }
             nextRefresh = Time.unscaledTime + refreshInterval;
+        }
+
+        private void EnsurePartnerReadout()
+        {
+            if (statsCanvas == null || checkpointReadout == null) return;
+            partnerReadout = statsCanvas.transform.Find("TempoPartnerStatus")?.GetComponent<TMP_Text>();
+            if (partnerReadout == null)
+            {
+                partnerReadout = Instantiate(checkpointReadout, statsCanvas.transform, false);
+                partnerReadout.name = "TempoPartnerStatus";
+            }
+            partnerReadout.rectTransform.anchoredPosition = new Vector2(20, -267);
+            partnerReadout.rectTransform.sizeDelta = new Vector2(260, 22);
+            partnerReadout.text = "";
+            partnerReadout.gameObject.SetActive(false);
+            var rect = (RectTransform)statsCanvas.transform;
+            rect.sizeDelta = new Vector2(rect.sizeDelta.x, Mathf.Max(354, rect.sizeDelta.y));
+            MoveHudButton(statsCanvas.transform, "PauseSession", 300);
+            MoveHudButton(statsCanvas.transform, "BackToMenu", 300);
         }
 
         private static string FormatPace(double speedMetresPerSecond)

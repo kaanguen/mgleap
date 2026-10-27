@@ -19,9 +19,10 @@ namespace StadionTracking
         public void TogglePause()
         {
             if (world == null) return;
-            if (world.SpeedKmh > 0) { resumeSpeed = world.SpeedKmh; world.SpeedKmh = 0; }
-            else world.SpeedKmh = resumeSpeed > 0 ? resumeSpeed : 10;
-            if (pauseLabel != null) pauseLabel.text = world.SpeedKmh > 0 ? "PAUSE" : "WEITER";
+            world.SessionPaused = !world.SessionPaused;
+            if (world.SessionPaused) { resumeSpeed = world.SpeedKmh; world.SpeedKmh = 0; }
+            else world.SpeedKmh = resumeSpeed;
+            if (pauseLabel != null) pauseLabel.text = world.SessionPaused ? "WEITER" : "PAUSE";
         }
         public void BackToMenu()
         {

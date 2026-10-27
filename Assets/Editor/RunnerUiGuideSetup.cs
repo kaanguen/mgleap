@@ -257,7 +257,7 @@ internal static class RunnerUiGuideSetup
         RunnerUiTheme.Rule(canvas.transform, 249);
         RunnerUiTheme.Text("ModeLabel", canvas.transform, "LAUFMODUS", 20, 264, 260, 18, 13, false, true);
         var side = RunnerUiTheme.Button("SideBySide", canvas.transform, "NEBEN MIR", 20, 296, 124, null, 48);
-        var pacer = RunnerUiTheme.Button("Pacer", canvas.transform, "PACER", 156, 296, 124, null, 48);
+        var pacer = RunnerUiTheme.Button("Pacer", canvas.transform, "TEMPO-\nPARTNER", 156, 296, 124, null, 48);
         var status = RunnerUiTheme.Text("ModeDescription", canvas.transform, "Avatar läuft neben dir.", 20, 358, 260, 42, 13);
         RunnerUiTheme.Rule(canvas.transform, 414);
         RunnerUiTheme.Text("HeightLabel", canvas.transform, "KÖRPERGRÖSSE", 20, 429, 260, 18, 13, false, true);

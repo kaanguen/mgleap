@@ -38,6 +38,14 @@ namespace StadionTracking
         public long CurrentLap => _run.CurrentLap;
         public long CompletedLaps => _run.CompletedLaps;
         public double TravelledMetres => _run.TravelledMetres;
+        public GameObject GhostAvatarPrefab { get; set; }
+
+        public void GetRunningPose(double travelledMetres, out Vector3 position, out Quaternion rotation)
+        {
+            var sample = _geometry.Evaluate(Lane, _entryMetres + travelledMetres);
+            position = transform.TransformPoint(Position(sample));
+            rotation = Quaternion.LookRotation(transform.TransformDirection(Direction(sample)), Vector3.up);
+        }
 
         public Vector2 TrackLocalPosition
         {

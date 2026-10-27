@@ -18,7 +18,7 @@ namespace StadionTracking
             Bind("PaceMinus", () => ChangePace(-15)); Bind("PacePlus", () => ChangePace(15));
             Bind("HeightMinus", () => ChangeHeight(-1)); Bind("HeightPlus", () => ChangeHeight(1));
             Bind("SideBySide", () => SetMode(TreadmillRunMode.SideBySide));
-            Bind("Pacer", () => SetMode(TreadmillRunMode.Pacer)); Bind("StartSession", StartSession);
+            Bind("Pacer", () => SetMode(TreadmillRunMode.TempoPartner)); Bind("StartSession", StartSession);
             Bind("TrackVisibility", ToggleTrackVisibility);
             Refresh();
         }
@@ -37,16 +37,16 @@ namespace StadionTracking
             paceValue.text = $"<mspace=16>{PaceSeconds / 60}:{PaceSeconds % 60:00}</mspace> <size=13><color=#E3DEF7>min/km</color></size>";
             heightValue.text = $"<mspace=16>{HeightCm}</mspace> <size=13><color=#E3DEF7>cm</color></size>";
             beside.GetComponent<RunnerGlassGraphic>().color = new Color(1, 1, 1, Mode == TreadmillRunMode.SideBySide ? .2f : .07f);
-            pacer.GetComponent<RunnerGlassGraphic>().color = new Color(1, 1, 1, Mode == TreadmillRunMode.Pacer ? .2f : .07f);
+            pacer.GetComponent<RunnerGlassGraphic>().color = new Color(1, 1, 1, Mode == TreadmillRunMode.TempoPartner ? .2f : .07f);
             beside.GetComponentInChildren<TMP_Text>().text = Mode == TreadmillRunMode.SideBySide ? "• NEBEN MIR" : "NEBEN MIR";
-            pacer.GetComponentInChildren<TMP_Text>().text = Mode == TreadmillRunMode.Pacer ? "• PACER" : "PACER";
+            pacer.GetComponentInChildren<TMP_Text>().text = Mode == TreadmillRunMode.TempoPartner ? "• TEMPO-\nPARTNER" : "TEMPO-\nPARTNER";
             var visibility = transform.Find("TrackVisibility")?.GetComponent<UnityEngine.UI.Button>();
             if (visibility != null)
             {
                 visibility.GetComponentInChildren<TMP_Text>().text = ShowTrack ? "RENNSTRECKE AUSSCHALTEN" : "RENNSTRECKE ANZEIGEN";
                 visibility.GetComponent<RunnerGlassGraphic>().color = new Color(1, 1, 1, ShowTrack ? .2f : .07f);
             }
-            status.text = Mode == TreadmillRunMode.Pacer ? "Avatar läuft 3 m auf der Bahn voraus." : "Avatar läuft auf der Nachbarbahn mit.";
+            status.text = Mode == TreadmillRunMode.TempoPartner ? "Erst deine Zielpace, später deine beste Runde." : "Avatar läuft auf der Nachbarbahn mit.";
         }
         public void StartSession()
         {
