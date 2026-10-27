@@ -34,6 +34,14 @@ MarkerML2 zeigt auf der Magic Leap 2 eine virtuelle 400-m-Laufbahn und einen Lau
 
 ## Schnellstart
 
+
+   RunningServer pullen : 
+
+     ```bash
+   git pull https://github.com/kaanguen/RunningServer
+
+   ```
+
 1. RunningServer starten:
 
    ```bash
