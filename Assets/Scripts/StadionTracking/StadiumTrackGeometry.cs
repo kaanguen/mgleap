@@ -80,6 +80,23 @@ namespace StadionTracking
             return new Sample(-h + (s - 2 * bend - StraightLength), -r, 1, 0);
         }
 
+        // Keep all lanes abreast of the same reference point on lane 1.
+        public Sample EvaluateAlignedLane(int lane, double referenceMetres)
+        {
+            var sample = Evaluate(1, referenceMetres * Length(1) / 400.0);
+            double offset = Radius(lane) - Radius(1);
+            return new Sample(sample.X + sample.DirectionZ * offset,
+                sample.Z - sample.DirectionX * offset, sample.DirectionX, sample.DirectionZ);
+        }
+
+        public double LaneSpeedScale(int lane, double referenceMetres)
+        {
+            double length = Length(1), s = ((referenceMetres % 400) + 400) % 400 * length / 400;
+            double bend = Math.PI * Radius(1);
+            bool curved = s < bend || (s >= bend + StraightLength && s < 2 * bend + StraightLength);
+            return length / 400 * (curved ? Radius(lane) / Radius(1) : 1);
+        }
+
         // Return the distance along the nearest point on the lane path.
         public double Project(int lane, double x, double z)
         {

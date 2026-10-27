@@ -25,6 +25,15 @@ namespace StadionTracking
         private static readonly int Blend = Animator.StringToHash("speed");
         private static readonly int Rate = Animator.StringToHash("locomotionRate");
 
+        private double normalElapsedSeconds;
+        private readonly GhostTestMotion testMotion = new GhostTestMotion();
+        public bool TestSpeedEnabled => testMotion.Enabled;
+        public double TestSpeedKmh => testMotion.SpeedKmh;
+        public double CurrentSpeedKmh { get; private set; }
+        public double TravelledMetres { get; private set; }
+        public void SetTestSpeed(double? speedKmh) => testMotion.SetSpeed(speedKmh, TravelledMetres);
+        public void ResetTestPosition() { testMotion.Reset(); normalElapsedSeconds = 0; TravelledMetres = 0; }
+
         public GameObject Avatar => avatar;
         public double DistanceIntoLap { get; private set; }
         public double GapMetres { get; private set; }
@@ -40,6 +49,7 @@ namespace StadionTracking
             {
                 ReleaseAvatar();
                 source = activeSource;
+                ResetTestPosition();
                 companion = null;
             }
             bool ready = runner != null || (world != null && world.PlacementReady && world.HeightConfirmed);
@@ -55,6 +65,7 @@ namespace StadionTracking
             IsPartnerActive = showGhost && ready && tracker != null && isActiveAndEnabled && partnerMode;
             if (!IsPartnerActive)
             {
+                CurrentSpeedKmh = 0;
                 if (holder != null) holder.SetActive(false);
                 return;
             }
@@ -67,24 +78,36 @@ namespace StadionTracking
                     // The same avatar is never displayed as a side companion and a tempo partner.
                     companion.Synchronize();
                 }
-                if (prefab == null) return;
-                if (!Spawn(prefab)) return;
+                if (prefab == null || !Spawn(prefab)) { IsPartnerActive = false; CurrentSpeedKmh = 0; return; }
             }
 
-            tracker.GhostRecording.Evaluate(tracker.LapElapsedSeconds, tracker.LapLengthMetres,
-                tracker.BestLapSeconds, out double distance, out double speed);
-            DistanceIntoLap = distance;
-            IsRecordedLap = tracker.GhostRecording.HasRecording;
+            // The avatar owns its lap clock; a standing user or missing belt signal cannot hold it at the finish.
+            if (clockRunning) normalElapsedSeconds += Time.deltaTime;
+            tracker.GhostRecording.EvaluateContinuous(normalElapsedSeconds, tracker.LapLengthMetres,
+                tracker.BestLapSeconds, out double normalDistance, out double speed);
+            double distance = normalDistance % tracker.LapLengthMetres;
             double userDistance = runner != null ? runner.TravelledMetres : world.TravelledMetres;
-            double lapStart = Math.Floor(userDistance / tracker.LapLengthMetres) * tracker.LapLengthMetres;
-            GapMetres = userDistance - lapStart - distance; // Positive means the user leads.
+            double laneSpeedScale = world != null ? world.AvatarLaneSpeedScale(TravelledMetres) : 1;
+            if (testMotion.Enabled)
+            {
+                // Test speed is actual speed on the selected lane, including outer bends.
+                testMotion.Advance(Time.deltaTime / laneSpeedScale, clockRunning);
+                TravelledMetres = testMotion.Distance;
+                distance = TravelledMetres % tracker.LapLengthMetres;
+                speed = testMotion.SpeedKmh / 3.6 / laneSpeedScale;
+            }
+            else TravelledMetres = normalDistance;
+            DistanceIntoLap = distance;
+            CurrentSpeedKmh = clockRunning ? speed * 3.6 * laneSpeedScale : 0;
+            IsRecordedLap = !testMotion.Enabled && tracker.GhostRecording.HasRecording;
+            GapMetres = userDistance - TravelledMetres; // Positive means the user leads.
             Vector3 ground;
             Quaternion heading;
             if (runner != null)
-                runner.GetRunningPose(lapStart + distance, out ground, out heading);
+                runner.GetRunningPose(TravelledMetres, out ground, out heading);
             else
-                world.GetRunningPose((float)(lapStart + distance - userDistance), out ground, out heading);
-            ground += heading * Vector3.right * laneOffsetMetres;
+                world.GetLanePoseAtDistance(TravelledMetres, world.AvatarLane, out ground, out heading);
+            if (runner != null) ground += heading * Vector3.right * laneOffsetMetres;
             avatar.transform.SetPositionAndRotation(ground - Vector3.up * soleOffset, heading);
             // Head tracking can move the user away from the calibrated belt centre.
             // Never move the ghost forward to avoid overlap: that would falsify the race gap.
@@ -98,7 +121,7 @@ namespace StadionTracking
                 nearUser = separation.sqrMagnitude < clearance * clearance;
             }
             holder.SetActive(!nearUser);
-            Animate(clockRunning ? (float)speed : 0f);
+            Animate((float)(CurrentSpeedKmh / 3.6));
         }
 
         private bool Spawn(GameObject prefab)
@@ -218,6 +241,7 @@ namespace StadionTracking
         private void OnDisable()
         {
             IsPartnerActive = false;
+            CurrentSpeedKmh = 0;
             if (holder != null) holder.SetActive(false);
         }
         private void OnDestroy() => ReleaseAvatar();

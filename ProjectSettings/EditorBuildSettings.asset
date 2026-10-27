@@ -6,9 +6,6 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
-    path: Assets/Scenes/RunnerMainMenu.unity
-    guid: 073d6e0c53212478eb1dd610ad558fcc
-  - enabled: 1
     path: Assets/Scenes/TreadmillStraightTest.unity
     guid: 141808be24616450f9565fd0d28542e6
   - enabled: 0

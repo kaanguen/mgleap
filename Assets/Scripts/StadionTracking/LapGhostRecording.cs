@@ -48,6 +48,17 @@ namespace StadionTracking
             Begin(distance, time, true);
         }
 
+        /// <summary>Replay consecutive laps independently of the user's distance or belt speed.</summary>
+        public void EvaluateContinuous(double elapsedSeconds, double lapLength, double targetLapSeconds,
+            out double totalDistance, out double speed)
+        {
+            elapsedSeconds = Math.Max(0, elapsedSeconds);
+            double duration = Math.Max(.001, targetLapSeconds);
+            double laps = Math.Floor(elapsedSeconds / duration);
+            Evaluate(elapsedSeconds % duration, lapLength, targetLapSeconds, out double lapDistance, out speed);
+            totalDistance = laps * lapLength + lapDistance;
+        }
+
         /// <summary>Hold at the finish until the runner starts their next lap.</summary>
         public void Evaluate(double lapSeconds, double lapLength, double targetLapSeconds,
             out double distance, out double speed)

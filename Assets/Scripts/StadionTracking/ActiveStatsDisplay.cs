@@ -32,6 +32,22 @@ namespace StadionTracking
         private LapGhostPlayback ghostPlayback;
         private LapCheckpointTracker checkpointTracker = new LapCheckpointTracker(400.0, RunnerSessionSettings.PaceSeconds);
 
+        public float ElapsedSeconds => elapsedSeconds;
+        public double? Recorded100mSeconds => checkpointTracker.Recorded100mSeconds;
+        public double? RecordedLapSeconds => checkpointTracker.RecordedLapSeconds;
+        public double? Recorded1KmSeconds => checkpointTracker.Recorded1KmSeconds;
+
+        public void ResetSessionStats()
+        {
+            elapsedSeconds = 0;
+            if (ghostPlayback != null) ghostPlayback.ResetTestPosition();
+            previousDistance = 0;
+            sessionStarted = false;
+            checkpointTracker = new LapCheckpointTracker(400.0, RunnerSessionSettings.PaceSeconds);
+            checkpointTracker.Update(0, 0);
+            nextRefresh = 0;
+        }
+
         private void Awake()
         {
             if (statsCanvas == null)
@@ -123,7 +139,8 @@ namespace StadionTracking
             bool explicitlyPaused = activeRunner != null
                 ? activeRunner.RequestedSpeedFraction <= 0f
                 : activeTreadmillWorld != null && activeTreadmillWorld.SessionPaused;
-            if (ready && !explicitlyPaused && speedMetresPerSecond > 0) sessionStarted = true;
+            // Explicit session start advances the common race/ghost clock even when the user's belt speed is zero.
+            if (ready && !explicitlyPaused) sessionStarted = true;
             bool clockRunning = ready && sessionStarted && !explicitlyPaused && Time.timeScale > 0;
             // A belt speed of zero counts as time lost; the explicit Pause button freezes the race.
             // Match the scaled clock used by both movement simulations.
@@ -159,7 +176,9 @@ namespace StadionTracking
             if (partnerReadout != null)
             {
                 partnerReadout.gameObject.SetActive(ghostPlayback.IsPartnerActive);
-                partnerReadout.text = checkpointTracker.GhostRecording.HasRecording
+                partnerReadout.text = ghostPlayback.TestSpeedEnabled
+                    ? $"GHOST TEST {ghostPlayback.TestSpeedKmh:F1} km/h"
+                    : checkpointTracker.GhostRecording.HasRecording
                     ? $"BESTE RUNDE {FormatSplitTime(checkpointTracker.BestLapSeconds)}"
                     : $"ZIELPACE {RunnerSessionSettings.PaceSeconds / 60}:{RunnerSessionSettings.PaceSeconds % 60:00} min/km";
             }

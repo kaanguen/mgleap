@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using Unity.XR.CoreUtils;
 using UnityEngine;
@@ -63,6 +64,22 @@ public class MarkerAndAnchorTracker : MonoBehaviour
     private string _lastPlaneStatus;
     private float _nextPlaneDiagnosticsTime;
 
+    private StraightTreadmillWorld _runningWorld;
+    private bool _runningWorldPlaced;
+    private int _runningWorldRevision;
+    private float _runningWorldScanRequestedAt;
+    private float _nextRunningPlacementDiagnostic;
+    public string RunningTrackStatus { get; private set; } = "Warte auf Bodenmarker.";
+    public ulong? RunningTrackMarkerId { get; private set; }
+    public void BindRunningWorld(StraightTreadmillWorld world)
+    {
+        _runningWorld = world;
+        _markersOnFloor = true;
+        _runningWorldPlaced = false;
+        _runningWorldRevision = world.MarkerPlacementRevision;
+        _runningWorldScanRequestedAt = Time.unscaledTime;
+    }
+
     private MagicLeapMarkerUnderstandingFeature _markerFeature;
     private MarkerDetector _markerDetector;
 
@@ -70,6 +87,7 @@ public class MarkerAndAnchorTracker : MonoBehaviour
     {
         public Vector3 SessionPosition;
         public Quaternion SessionRotation;
+        public Vector3 ObservationCameraSessionPosition;
         public float ReportedLength;
         public float LastSeenTime;
         public int PoseSamples;
@@ -102,46 +120,53 @@ public class MarkerAndAnchorTracker : MonoBehaviour
     }
 
     // Initialize marker detection and floor tracking.
-    private void Start()
+    private IEnumerator Start()
     {
         if (_xrOrigin == null)
             _xrOrigin = FindAnyObjectByType<XROrigin>();
 
         if (_xrOrigin == null || _xrOrigin.CameraFloorOffsetObject == null)
         {
-            Debug.LogError(
+            ReportTrackingError(
                 "[MarkerAndAnchorTracker] XROrigin or CameraFloorOffsetObject is missing.");
             enabled = false;
-            return;
+            yield break;
         }
         if (_xrOrigin.Camera == null)
         {
-            Debug.LogError("[MarkerAndAnchorTracker] Camera is missing from XROrigin.");
+            ReportTrackingError("[MarkerAndAnchorTracker] Camera is missing from XROrigin.");
             enabled = false;
-            return;
+            yield break;
         }
 
-        if (_markerPrefab == null)
+        if (_markerPrefab == null && _runningWorld == null)
         {
-            Debug.LogError("[MarkerAndAnchorTracker] Marker prefab is missing.");
+            ReportTrackingError("[MarkerAndAnchorTracker] Marker prefab is missing.");
             enabled = false;
-            return;
+            yield break;
         }
         if (OpenXRSettings.Instance == null)
         {
-            Debug.LogError("[MarkerAndAnchorTracker] OpenXRSettings.Instance is missing.");
+            ReportTrackingError("[MarkerAndAnchorTracker] OpenXRSettings.Instance is missing.");
             enabled = false;
-            return;
+            yield break;
         }
+
+        RunningTrackStatus = "Marker-Tracking und Spatial Mapping freigeben.";
+        Permissions.RequestPermissions(new[] { Permissions.MarkerTracking, Permissions.SpatialMapping },
+            onPermissionDenied: permission => RunningTrackStatus = "Berechtigung verweigert: " + permission,
+            onPermissionDeniedDontAskAgain: permission => RunningTrackStatus = "Berechtigung in den Geräteeinstellungen aktivieren: " + permission);
+        while (!Permissions.CheckPermission(Permissions.MarkerTracking) || !Permissions.CheckPermission(Permissions.SpatialMapping))
+            yield return new WaitForSecondsRealtime(.25f);
 
         _markerFeature = OpenXRSettings.Instance
             .GetFeature<MagicLeapMarkerUnderstandingFeature>();
         if (_markerFeature == null || !_markerFeature.enabled)
         {
-            Debug.LogError(
+            ReportTrackingError(
                 "[MarkerAndAnchorTracker] Marker Understanding feature is missing or disabled.");
             enabled = false;
-            return;
+            yield break;
         }
         var settings = new MarkerDetectorSettings
         {
@@ -157,16 +182,24 @@ public class MarkerAndAnchorTracker : MonoBehaviour
         _markerDetector = _markerFeature.CreateMarkerDetector(settings);
         if (_markerDetector == null)
         {
-            Debug.LogError("[MarkerAndAnchorTracker] AprilTag detector could not be created.");
+            ReportTrackingError("[MarkerAndAnchorTracker] AprilTag detector could not be created.");
             enabled = false;
-            return;
+            yield break;
         }
         InitializePlaneDetection();
+        RunningTrackStatus = _planeDetectionConfigured ? "Bodenmarker scannen, dann Bodenfläche erfassen." : "Plane-Erkennung ist nicht konfiguriert.";
+    }
+
+    private void ReportTrackingError(string message)
+    {
+        RunningTrackStatus = message;
+        Debug.LogError(message, this);
     }
 
     // Store detected marker poses and update the floor query.
     private void Update()
     {
+        if (_markerFeature == null || _markerDetector == null || !Permissions.CheckPermission(Permissions.MarkerTracking)) return;
         UpdatePlaneQuery();
         _markerFeature.UpdateMarkerDetectors();
         if (_markerDetector.Status != MarkerDetectorStatus.Ready)
@@ -186,6 +219,7 @@ public class MarkerAndAnchorTracker : MonoBehaviour
             if (_markersById.TryGetValue(markerId, out MarkerState existingMarker))
             {
                 existingMarker.SessionRotation = pose.rotation;
+                existingMarker.ObservationCameraSessionPosition = _xrOrigin.CameraFloorOffsetObject.transform.InverseTransformPoint(_xrOrigin.Camera.transform.position);
                 existingMarker.ReportedLength = data.MarkerLength;
                 existingMarker.LastSeenTime = Time.unscaledTime;
                 existingMarker.PoseSamples++;
@@ -201,12 +235,13 @@ public class MarkerAndAnchorTracker : MonoBehaviour
             {
                 SessionPosition = pose.position,
                 SessionRotation = pose.rotation,
+                ObservationCameraSessionPosition = _xrOrigin.CameraFloorOffsetObject.transform.InverseTransformPoint(_xrOrigin.Camera.transform.position),
                 ReportedLength = data.MarkerLength,
                 LastSeenTime = Time.unscaledTime,
                 PoseSamples = 1
             };
             _markersById.Add(markerId, state);
-            Debug.Log($"[MarkerPlacement] Marker {markerId} detected. Waiting for a floor at the avatar spawn target.");
+            Debug.Log($"[MarkerPlacement] Marker {markerId} detected. Waiting for a matching floor plane.");
             _planeSelectionDirty = true;
         }
     }
@@ -398,7 +433,8 @@ public class MarkerAndAnchorTracker : MonoBehaviour
         foreach (TrackableId id in _removedPlaneIds)
             _smoothedPlanes.Remove(id);
 
-        UpdateCharacterPlacements();
+        if (_runningWorld != null) UpdateRunningTrackPlacement();
+        else UpdateCharacterPlacements();
 
         if (_markersById.Count > 0 && _planeManager.enabled && _spatialMappingGranted &&
             Time.unscaledTime >= _nextPlaneStatusTime)
@@ -504,6 +540,115 @@ public class MarkerAndAnchorTracker : MonoBehaviour
     {
         return planePoint.y - (normal.x * (point.x - planePoint.x) +
             normal.z * (point.z - planePoint.z)) / normal.y;
+    }
+
+    // One shared track/companion replaces the legacy per-marker avatar path in the run scene.
+    private void UpdateRunningTrackPlacement()
+    {
+        if (_runningWorldRevision != _runningWorld.MarkerPlacementRevision)
+        {
+            _runningWorldRevision = _runningWorld.MarkerPlacementRevision;
+            _runningWorldPlaced = false;
+            RunningTrackMarkerId = null;
+            _runningWorldScanRequestedAt = Time.unscaledTime;
+            foreach (var previous in _markersById.Values) previous.PoseSamples = 0;
+        }
+        if (_runningWorldPlaced) return; // Looking away must never despawn or reposition the track.
+        if (!_spatialMappingGranted || !_planeManager.enabled)
+        { RunningTrackStatus = "Warte auf Spatial Mapping und Plane-Erkennung."; return; }
+        Transform origin = _xrOrigin.CameraFloorOffsetObject.transform;
+        string waitingReason = _markersById.Count == 0 ? "Bodenmarker scannen." : "Marker kurz ruhig erfassen.";
+        foreach (var entry in _markersById)
+        {
+            var marker = entry.Value;
+            if (!FloorMarkerPlacement.CanUseScan(marker.PoseSamples, marker.LastSeenTime, _runningWorldScanRequestedAt))
+            { waitingReason = $"Marker {entry.Key}: {marker.PoseSamples}/3 Messungen. Marker kurz ruhig scannen."; continue; }
+            Vector3 markerWorld = origin.TransformPoint(marker.SessionPosition);
+            Vector3 placementPoint = markerWorld;
+            var plane = FindClosestPlane(markerWorld, _maxMarkerPlaneDistance, true);
+            bool correctedDepth = false;
+            if (plane == null)
+            {
+                plane = FindFloorAlongMarkerRay(marker, origin, markerWorld, out placementPoint);
+                correctedDepth = plane != null;
+            }
+            if (plane == null)
+            { waitingReason = DescribeMissingMarkerFloor(entry.Key, markerWorld); continue; }
+            if (plane.trackingState != TrackingState.Tracking || plane.classification != PlaneClassification.Floor)
+            { waitingReason = $"Marker {entry.Key} gespeichert; Bodenfläche noch nicht stabil getrackt ({plane.trackingState}, {plane.classification})."; continue; }
+            Transform surface = _smoothedPlanes.TryGetValue(plane.trackableId, out var smoothed)
+                ? smoothed.Visual : plane.transform;
+            Vector3 normal = surface.up;
+            if (normal.y < 0) normal = -normal;
+            if (normal.y < .9659f) { waitingReason = "Erkannte Fläche ist stärker als 15 Grad geneigt."; continue; }
+            if (!FloorMarkerPlacement.TryProject(placementPoint.x, placementPoint.y, placementPoint.z,
+                surface.position.x, surface.position.y, surface.position.z, normal.x, normal.y, normal.z,
+                _maxMarkerPlaneDistance, out double floorY))
+            { waitingReason = $"Marker {entry.Key}: Abstand zur geglätteten Bodenfläche noch zu groß."; continue; }
+            Vector3 ground = new Vector3(placementPoint.x, (float)floorY, placementPoint.z);
+            Quaternion markerRotation = origin.rotation * marker.SessionRotation;
+            Vector3 localDirection = _stadiumPreview != null ? _stadiumPreview.MarkerLocalRunDirection : Vector3.up;
+            Vector3 forward = Vector3.ProjectOnPlane(markerRotation * localDirection, normal);
+            if (forward.sqrMagnitude < .001f) forward = Vector3.ProjectOnPlane(markerRotation * Vector3.right, normal);
+            if (forward.sqrMagnitude < .001f) { waitingReason = "Markerrichtung noch nicht bestimmbar."; continue; }
+            if (!_runningWorld.PlaceFromMarkerPlane(ground, forward.normalized, normal))
+            { waitingReason = "Boden und Marker bestätigt; warte auf Headtracking."; continue; }
+            _runningWorldPlaced = true;
+            RunningTrackMarkerId = entry.Key;
+            RunningTrackStatus = $"Marker {entry.Key} · Bodenfläche bestätigt · Bahn platziert.";
+            Debug.Log($"[RunningTrack] Marker {entry.Key} placed track and avatar on floor {plane.trackableId} at {ground}; floorRayCorrection={correctedDepth}, markerPose={markerWorld}.");
+            return;
+        }
+        RunningTrackStatus = waitingReason;
+        if (_markersById.Count > 0 && Time.unscaledTime >= _nextRunningPlacementDiagnostic)
+        {
+            _nextRunningPlacementDiagnostic = Time.unscaledTime + 5;
+            Debug.Log("[RunningTrack] " + waitingReason, this);
+        }
+    }
+
+    private ARPlane FindFloorAlongMarkerRay(MarkerState marker, Transform origin, Vector3 markerWorld, out Vector3 hit)
+    {
+        hit = Vector3.zero;
+        ARPlane selected = null;
+        float nearest = float.PositiveInfinity;
+        Vector3 camera = origin.TransformPoint(marker.ObservationCameraSessionPosition);
+        Vector3 markerNormal = origin.rotation * marker.SessionRotation * Vector3.forward;
+        foreach (var plane in _planeManager.trackables)
+        {
+            if (plane.subsumedBy != null || plane.trackingState != TrackingState.Tracking || plane.classification != PlaneClassification.Floor) continue;
+            Transform surface = _smoothedPlanes.TryGetValue(plane.trackableId, out var smooth) ? smooth.Visual : plane.transform;
+            Vector3 normal = surface.up;
+            if (normal.y < 0) normal = -normal;
+            // Depth correction is only valid for a tag lying flat on the detected floor.
+            if (Mathf.Abs(Vector3.Dot(markerNormal.normalized, normal.normalized)) < .9f) continue;
+            Vector3 p = surface.position;
+            if (!FloorMarkerPlacement.TryIntersectFloor(camera.x,camera.y,camera.z, markerWorld.x,markerWorld.y,markerWorld.z,
+                p.x,p.y,p.z,normal.x,normal.y,normal.z,10,out double x,out double y,out double z)) continue;
+            Vector3 candidate = new Vector3((float)x,(float)y,(float)z);
+            Vector3 local = plane.transform.InverseTransformPoint(candidate);
+            if (!ContainsPoint(plane,new Vector2(local.x,local.z),_planeBoundaryTolerance)) continue;
+            float distance = (candidate-camera).sqrMagnitude;
+            if (distance >= nearest) continue;
+            nearest = distance; selected = plane; hit = candidate;
+        }
+        return selected;
+    }
+
+    private string DescribeMissingMarkerFloor(ulong markerId, Vector3 markerWorld)
+    {
+        float closestDistance = float.PositiveInfinity;
+        int floors = 0;
+        foreach (var floor in _planeManager.trackables)
+        {
+            if (floor.subsumedBy != null || floor.trackingState == TrackingState.None || !IsPlaneTypeAllowed(floor)) continue;
+            floors++;
+            closestDistance = Mathf.Min(closestDistance, Mathf.Abs(Vector3.Dot(markerWorld - floor.transform.position, floor.transform.up)));
+        }
+        if (floors == 0) return $"Marker {markerId} gespeichert; warte auf erkannte Floor-Plane (Flächen gesamt: {_planeManager.trackables.count}).";
+        if (closestDistance > _maxMarkerPlaneDistance)
+            return $"Marker {markerId} gespeichert; Bodenabstand {closestDistance * 100:F1} cm, erlaubt {_maxMarkerPlaneDistance * 100:F1} cm. Markergröße prüfen.";
+        return $"Marker {markerId} gespeichert; Bodenpolygon am Marker noch unvollständig. Boden um den Marker weiter scannen.";
     }
 
     // Find a confirmed floor, spawn the avatar and bind the shared controls.
