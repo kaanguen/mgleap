@@ -1,368 +1,362 @@
-# MarkerML2 – AR-Lauftraining und RunningServer
+# MarkerML2 – Projektaufbau, Skripte und Funktionsweise
 
-**Stand: 27.10.2026.** Diese README beschreibt den aktuellen Quellcode. Der zuletzt auf der Magic Leap geprüfte Build enthält die Marker-/Plane-Platzierung. Die anschließend ergänzte Nutzer-Geschwindigkeitsauswahl und die vollständig unabhängige Avatar-Pace benötigen noch einen neuen Geräte-Build.
+Stand: 28.10.2026. Diese Übersicht beschreibt den vorhandenen Quellcode und die Projektkonfiguration. Es wurden für diese Dokumentation keine neuen Geräte- oder Laufzeittests durchgeführt. Angaben zu bisherigen Gerätetests stammen aus der vorhandenen README.
 
-MarkerML2 zeigt auf der Magic Leap 2 eine virtuelle 400-m-Laufbahn und einen Laufpartner. Gesteuert wird die App über ein lokales Web-Dashboard. Ein Bodenmarker und eine erkannte Bodenfläche legen die räumliche Platzierung fest; eine Körpergrößen- oder manuelle Höheneingabe ist dafür nicht mehr nötig.
+## 1. Was macht das Projekt?
 
-## Inhalt
+MarkerML2 ist eine AR-Lauftrainingsanwendung für die **Magic Leap 2**. Sie platziert eine virtuelle Laufbahn und einen animierten Laufpartner in der realen Umgebung. Ein AprilTag auf dem Boden und eine erkannte Bodenfläche bestimmen Position, Höhe und Ausrichtung der Laufwelt.
 
-- [Projektordner](#projektordner)
-- [Schnellstart](#schnellstart)
-- [Verbindung über USB oder WLAN](#verbindung-über-usb-oder-wlan)
-- [Marker, Bodenfläche und automatischer Spawn](#marker-bodenfläche-und-automatischer-spawn)
-- [Drei getrennte Einstellungen](#drei-getrennte-einstellungen)
-- [Nutzertempo: Test oder Laufband](#nutzertempo-test-oder-laufband)
-- [Avatar-Modi und Bahnauswahl](#avatar-modi-und-bahnauswahl)
-- [Ghost und Bestzeiten](#ghost-und-bestzeiten)
-- [Kalibrierung und Feinausrichtung](#kalibrierung-und-feinausrichtung)
-- [Bedienung im Dashboard](#bedienung-im-dashboard)
-- [Speicherung und Aufzeichnung](#speicherung-und-aufzeichnung)
-- [Technischer Aufbau](#technischer-aufbau)
-- [Bauen und Prüfen](#bauen-und-prüfen)
-- [Fehlersuche](#fehlersuche)
+Die Anwendung unterstützt zwei Laufumgebungen:
 
-## Projektordner
+- **Laufband:** Der Nutzer bleibt ungefähr am selben realen Ort. Die virtuelle Umgebung bewegt sich entsprechend seinem simulierten oder gemeldeten Tempo.
+- **Stadion:** Die virtuelle Bahn bleibt räumlich fest. Die projizierte Kopfposition des Nutzers liefert den Laufbahnfortschritt.
 
-| Ordner | Inhalt |
+Davon unabhängig gibt es zwei Avatar-Modi:
+
+- **SideBySide:** Der Begleiter bleibt auf Höhe des Nutzers beziehungsweise an einer eingestellten relativen Position.
+- **TempoPartner:** Ein Ghost läuft mit eigener Zielpace, einer aufgezeichneten besten Runde oder einem separat eingestellten Testtempo.
+
+Die Hauptbedienung erfolgt über das Web-Dashboard des **RunningServer**. In der Brille zeigt ein HUD unter anderem Zeit, Distanz, Pace und Checkpoints. Zusätzlich enthält das Projekt ein eigenes BLE-Paket für Herzfrequenz und weitere Sensordaten.
+
+## 2. Technische Grundlage
+
+| Bereich | Im Projekt verwendete Grundlage |
 | --- | --- |
-| `/Users/kaan/Unity Projekte/MarkerML2/` | Unity-App, Szenen, Skripte und diese README |
-| `/Users/kaan/RunningServer/` | Node.js-Server, Dashboard, WebSocket-Relay und Aufzeichnungen |
-| `Assets/Resources/RunnerServer.json` | Serveradresse für neue App-Builds |
-| `Docs/RunningServer.md` | Aktuelle Befehle und Telemetrie des Unity-Clients |
+| Unity | 2022.3.62f3 laut `ProjectSettings/ProjectVersion.txt` |
+| Zielgerät | Magic Leap 2, Android |
+| Rendering | Universal Render Pipeline, Paket 14.0.12 |
+| XR | OpenXR 1.14.3, Magic-Leap-SDK, ARFoundation-Typen für Planes und XR Interaction Toolkit für Interaktion |
+| Handtracking | XR Hands 1.4.3, Input Actions, XR-Ray und Pinch |
+| Oberfläche | uGUI/Canvas und TextMeshPro 3.0.7 |
+| Netzwerk | `ClientWebSocket`, JSON über Newtonsoft.Json |
+| BLE | Eigenes Embedded Package `com.kaan.ble-sensors` mit Velorexe-Plugin und Android-JAR |
 
-Änderungen an `RunningServer/public/app.js` oder `style.css` werden nach Neuladen der Webseite sichtbar. Änderungen an Unity-C#-Code müssen gebaut und auf der Brille installiert werden. Ein neues Dashboard aktualisiert die installierte App nicht automatisch.
+Die direkten Paketabhängigkeiten stehen in [Packages/manifest.json](Packages/manifest.json), die aufgelösten Abhängigkeiten in `Packages/packages-lock.json`. Das Magic-Leap-SDK ist über einen lokalen Dateipfad eingebunden. Dieser muss auf einem anderen Rechner angepasst werden.
 
-## Schnellstart
+## 3. Projektstruktur
 
-1. RunningServer starten:
-
-   ```bash
-   cd /Users/kaan/RunningServer
-   npm start
-   ```
-
-2. Das Dashboard unter **http://localhost:8081/** öffnen. Der Server verwendet standardmäßig Port **8081**. Port 8080 wurde auf diesem Rechner bereits von Unity MCP verwendet.
-3. Magic Leap per USB-Portweiterleitung oder WLAN verbinden, siehe nächster Abschnitt.
-4. MarkerML2 auf der Brille öffnen und **Marker Tracking** sowie **Spatial Mapping** erlauben.
-5. Den konfigurierten AprilTag flach auf den Boden legen. Aktuelle Szene: **Dictionary 36H11**, konfigurierte Kantenlänge **10 cm**.
-6. Den Marker kurz ruhig scannen und die Bodenfläche um ihn herum erfassen. Die App wartet auf eine passende getrackte Floor-Plane.
-7. Sobald die Platzierung bestätigt ist, erscheinen Laufbahn und Avatar automatisch. Der Avatar steht auf **Bahn 3**; der Lauf bleibt gestoppt. Dafür ist kein „Lauf starten“- oder separater Spawn-Befehl erforderlich. Auch ohne Serververbindung ist dieser Spawn möglich.
-8. Im Dashboard den Avatar-Modus und die Ghost-Zielpace wählen. **An Brille senden** überträgt diese Konfiguration und setzt die Laufstatistik zurück. **Lokal speichern** speichert dagegen nur den Browserentwurf.
-9. In einem aktuellen Build unter **Nutzertempo · Test oder Laufband** die Geschwindigkeit des Nutzers festlegen. Für Tests z. B. feste 10 km/h wählen und übernehmen.
-10. **Lauf starten** beginnt die Session. **Pause**, **Weiter**, **Stoppen** und **Lauf zurücksetzen** steuern sie anschließend.
-
-Das frühere Hauptmenü und die lokalen Pause-/Menüknöpfe sind nicht mehr Teil des normalen Bedienablaufs. Die **Live Run Stats in der Brille bleiben sichtbar**.
-
-## Verbindung über USB oder WLAN
-
-### USB / ADB
-
-ADB-Befehle werden im Terminal auf dem Mac ausgeführt, nicht in der Brille.
-
-1. Auf der Magic Leap bei Bedarf unter **Settings → About** siebenmal auf **Build number** klicken. Anschließend unter **System → Advanced → Developer options** USB debugging aktivieren.
-2. Compute Pack per USB-Datenkabel anschließen und die Debugging-Anfrage in der Brille bestätigen.
-3. Verbindung und Portweiterleitung prüfen:
-
-   ```bash
-   adb devices
-   adb reverse tcp:8081 tcp:8081
-   adb reverse --list
-   ```
-
-   Bei `unauthorized` fehlt die Bestätigung in der Brille. Bei mehreren Geräten jeweils `adb -s <Seriennummer> ...` verwenden.
-
-4. Die voreingestellte App-Adresse lautet:
-
-   ```json
-   {
-     "serverUrl": "ws://127.0.0.1:8081/ws"
-   }
-   ```
-
-Auf der Brille bezeichnet `127.0.0.1` die Brille selbst. Die Verbindung zum Mac funktioniert unter dieser Adresse durch `adb reverse`. USB angeschlossen lassen und die Weiterleitung nach einem Geräte-Neustart erneut einrichten.
-
-### WLAN
-
-Mac und Magic Leap müssen sich über das lokale Netzwerk erreichen können. RunningServer zeigt beim Start seine LAN-Adressen an.
-
-In [RunnerServer.json](Assets/Resources/RunnerServer.json) die aktuelle LAN-Adresse des Macs eintragen:
-
-```json
-{
-  "serverUrl": "ws://<LAN-IP-des-Macs>:8081/ws"
-}
+```text
+MarkerML2/
+├── Assets/
+│   ├── Scripts/
+│   │   ├── MarkerAndAnchorTracker.cs   Marker, Planes und AR-Platzierung
+│   │   ├── Gestures.cs                Hand-Ray und Pinch-Bedienung
+│   │   ├── UIScript.cs                UI des älteren Marker-Läufers
+│   │   └── StadionTracking/           Laufwelt, Geometrie, Ghost, HUD, Server
+│   ├── Editor/                        Szenenaufbau, Prüfungen, Build-Werkzeug
+│   ├── Scenes/                        Lauf-, Menü- und Beispielszenen
+│   ├── Resources/RunnerServer.json    Serveradresse im Build
+│   ├── HeartRateBLE/                  Sensor-Canvas und Profil-Assets
+│   ├── Models/, Anim/, Materials/     Darstellung und Animation
+│   ├── UI/                            UI-Dokumentation und Gestaltung
+│   └── Samples/, TextMesh Pro/        Importierte Beispiele und Ressourcen
+├── Packages/
+│   ├── manifest.json                 Paketabhängigkeiten
+│   └── com.kaan.ble-sensors/          Eigenständiges BLE-Paket
+├── ProjectSettings/                  Unity-, Android-, XR- und Build-Einstellungen
+├── Tests/StadionTracking/             Eigenständige C#-Logikprüfungen
+├── Tools/generate_simple_track.py     Kartengrafik erzeugen
+├── Docs/RunningServer.md              Netzwerkprotokoll und Dashboard-Bedienung
+├── BLE-Delivery/                      Paketarchiv und Migrationsunterlagen
+├── Build/                            Erzeugte Android-Builds
+└── README.md                         Ausführliche Bedienungsanleitung
 ```
 
-Anschließend die App neu bauen und installieren. Für WLAN darf auf der Brille nicht `localhost` als Adresse des Macs verwendet werden. Der Mac kann sein eigenes Dashboard weiterhin über `http://localhost:8081/` öffnen.
+`Library`, `Logs`, generierte `.csproj`-Dateien und die `.sln` sind Arbeits-/Cache- beziehungsweise IDE-Dateien. Die fachliche Implementierung liegt vor allem in `Assets/Scripts` und im BLE-Paket.
 
-Alternativ liest die App eine `runner-server.json` aus ihrem `Application.persistentDataPath`. Diese Datei verwendet dasselbe JSON-Format und überschreibt die im Build hinterlegte Adresse.
+Der externe Server liegt laut bestehender Projektdokumentation unter `/Users/kaan/RunningServer/`. Er ist ein separates Projekt; seine Implementierung wird in dieser Datei nicht als Bestandteil des Unity-Quellcodes inventarisiert.
 
-Die App verbindet sich nach einem Abbruch automatisch erneut. Ein Abbruch pausiert den Lauf; fortgesetzt wird ausdrücklich mit **Weiter**. Der Server spielt während einer Trennung verpasste Befehle nicht später nach.
-
-## Marker, Bodenfläche und automatischer Spawn
-
-Die Laufszene aktiviert ihren vorhandenen `MarkerAndAnchorTracker` und bindet ihn an die gemeinsame Laufwelt. Der alte separate Marker-Avatar wird dabei nicht zusätzlich erzeugt.
-
-Die Platzierung verlangt:
-
-- einen stabil erfassten Markerscan mit mindestens drei Messungen;
-- eine passende, aktiv getrackte und als **Floor** erkannte Plane;
-- ein Bodenpolygon, das den vorgesehenen Bodenpunkt abdeckt;
-- gültiges Headtracking.
-
-Ein gespeicherter Scan bleibt gültig, während die Plane-Erkennung nachläuft. Der Marker muss deshalb nicht exakt in dem Moment erneut erkannt werden, in dem die Bodenfläche erscheint.
-
-Die Höhe stammt aus der erkannten Plane. Die konfigurierte lokale Laufrichtung des Markers bestimmt die anfängliche Ausrichtung. Kleine spätere Änderungen an Marker-/Plane-Posen versetzen die fertig platzierte Bahn nicht fortlaufend. Auch beim Wegschauen bleiben Bahn und Avatar vorhanden.
-
-### Korrektur einer falschen Marker-Tiefe
-
-Auf dem Gerät wurde Marker 39 erkannt, seine geschätzte 3D-Position lag jedoch ungefähr 59 cm über der Floor-Plane. Der Nutzer bestätigte eine flache Bodenlage und 10 cm Kantenlänge.
-
-Die App verwendet daher bei Bedarf den Sichtstrahl vom Scan zur Markerpose und schneidet ihn mit der erkannten Floor-Plane. Dafür wird die Kameraposition zum Zeitpunkt des Scans gespeichert. Akzeptiert wird der Schnittpunkt nur auf einer passenden Floor-Plane, innerhalb ihres Polygons und bei einer ungefähr parallel zum Boden liegenden Markerfläche. Der Schnittpunkt darf höchstens 10 m entfernt sein; horizontale oder aufwärts gerichtete Strahlen werden abgewiesen.
-
-Der Geräte-Log bestätigt diese Platzierung mit `floorRayCorrection=True`. Die direkte Projektion bei höchstens 15 cm Marker-/Plane-Abstand bleibt ebenfalls vorhanden.
-
-### Erneut platzieren
-
-**Kalibrierung → Bodenmarker neu scannen** pausiert den Lauf und blendet Bahn und Avatar aus. Nach einem neuen gültigen Scan samt Plane werden beide erneut platziert. Zeit und Distanz bleiben dabei erhalten. Ein App-Neustart beginnt dagegen eine neue Session.
-
-Die erkannte Bodenebene ist die Referenz für die ausgedehnte virtuelle Bahn. Dadurch ist nicht automatisch die gesamte reale 400-m-Fläche vermessen. Die Platzierung gilt für die laufende XR-Session; sie wird nicht dauerhaft über App-Neustarts gespeichert.
-
-## Drei getrennte Einstellungen
-
-| Einstellung | Auswahl | Bedeutung |
-| --- | --- | --- |
-| **Laufumgebung** | Laufband / echte Stadionbahn | Bewegt sich die virtuelle Welt unter dem Nutzer oder bleibt sie fest im Raum? |
-| **Nutzer-Geschwindigkeitsquelle** | Feste Test-km/h / Laufbanddaten | Wie entsteht der Nutzerfortschritt in der bewegten Welt? |
-| **Avatar-Modus** | Side by Side / Tempo-Partner | Läuft der Avatar neben dem Nutzer oder als Ghost nach einem Zeitprofil? |
-
-Die Quelle des Nutzertempos und das Tempo des Ghosts sind unabhängig. Auf einer echten Stadionbahn kommt das Nutzertempo aus dem Headtracking; die Auswahl fester Test-/Laufband-km/h ist dort nicht aktiv.
-
-## Nutzertempo: Test oder Laufband
-
-Diese Auswahl ist im aktuellen Quellcode und Dashboard implementiert, im zuletzt geprüften Geräte-Build aber noch nicht enthalten.
-
-### Test · feste km/h
-
-Unter **Nutzertempo · Test oder Laufband** eine Geschwindigkeit von 0 bis 100 km/h eingeben und **Nutzertempo übernehmen** wählen.
-
-Der Nutzer kann körperlich stehen bleiben. Die virtuelle Welt bewegt sich mit dem eingestellten Tempo; eine reale Vorwärtsbewegung im Raum ist für diesen Test nicht erforderlich. Das feste Tempo kann während des Laufens geändert werden. Die Ghost-Zielpace bleibt davon unabhängig.
-
-### Laufband · Sensordaten
-
-Dieser Modus ist für eine spätere echte Laufband-Anbindung vorbereitet. Der Nutzer bleibt räumlich auf dem Laufband stehen; die virtuelle Welt verwendet die gemessene Bandgeschwindigkeit.
-
-**Die tatsächliche Hardware-Anbindung ist noch nicht implementiert.** Ohne Messwerte beträgt das Tempo 0 km/h. Ungültige oder mehr als zwei Sekunden alte Messwerte ergeben ebenfalls 0 km/h. Eine gemessene Bandgeschwindigkeit von 0 ist dagegen ein gültiges Signal für ein stehendes Band.
-
-Ein künftiger Adapter liefert auf dem Unity-Hauptthread Werte über:
-
-```csharp
-world.ReportTreadmillSpeedKmh(measuredKmh);
-world.ClearTreadmillSignal(); // z. B. beim Trennen des Sensors
-```
-
-Dies ist ein Dateneingang für gemessene Geschwindigkeit. Die App startet oder steuert damit keinen physischen Laufbandmotor.
-
-**Ein Wechsel der Nutzer-Geschwindigkeitsquelle hält einen laufenden Avatar nicht an.** Der Ghost behält seine Zielpace, Bestzeitwiedergabe oder sein separates Testtempo. Ohne Laufbanddaten bleibt nur der Nutzerfortschritt bei 0. Zeit und Avatar laufen weiter, solange die Session läuft. Eine vorher bereits pausierte Session bleibt pausiert. Statistik und Kalibrierung bleiben beim Quellenwechsel erhalten.
-
-## Avatar-Modi und Bahnauswahl
-
-### Side by Side
-
-Der Begleiter verwendet denselben Nutzerfortschritt und die ausgewählte Bahn. Seine Laufanimation verwendet die eingestellte Avatar-Zielpace unabhängig von den Nutzer-/Laufband-km/h. Im Laufbandmodus bleibt er relativ zur Laufposition; auf der festen Stadionbahn folgt er der projizierten Nutzerposition auf seiner Bahn.
-
-Zusätzlich gibt es für Side by Side in der Laufbandumgebung eine freie **Sweet-Spot-Platzierung** mit acht Richtungen, Abstand und Blickrichtung. Sie ersetzt die feste Bahnauswahl für diesen Begleiter. Im Stadionmodus wird die Bahnauswahl verwendet.
-
-### Tempo-Partner
-
-Der Ghost verwendet die Zielpace oder ein gespeichertes Bestzeit-Bewegungsprofil. Auch wenn der Nutzer auf Laufbanddaten umstellt und noch kein Laufband Daten liefert, läuft der Ghost in einer gestarteten Session weiter. Sein Fortschritt wird unabhängig vom Nutzer ausgewertet. Er kann vor oder hinter dem Nutzer liegen.
-
-### Bahn 1–8
-
-Unter **Kalibrierung → Avatar-Bahn · beide Modi** eine Bahn auswählen und übernehmen. Die Auswahl gilt für Side by Side und Tempo-Partner, ohne die Ghost-Aufnahme oder die Statistik zu löschen.
-
-- Beim automatischen Spawn nach dem App-Start bzw. erneuten Markerscan: **Bahn 3**.
-- **Lauf starten** setzt den Avatar ebenfalls auf Bahn 3.
-- Eine spätere Bahnauswahl kann den laufenden Lauf automatisch pausieren. Mit **Weiter** wird die gewählte Bahn erhalten.
-- **Weiter** setzt den Avatar nicht erneut auf Bahn 3.
-
-Bahn 1 ist die 400-m-Referenz. Außenbahnen sind geometrisch länger; die Avatarpositionen werden nebeneinander zur gleichen Referenzposition ausgewertet. Die Geschwindigkeits-/Animationsauswertung berücksichtigt die längeren Außenkurven.
-
-## Ghost und Bestzeiten
-
-### Normale Wiedergabe
-
-Die **Ghost-Zielpace** ist in Sekunden pro Kilometer gespeichert; im Dashboard sind 3:00–20:00 min/km einstellbar. Ohne geeignete aufgezeichnete Bestzeit läuft der Ghost nach dieser Vorgabe. Eine schnellere vollständige Runde kann die aktuelle Vergleichszeit ersetzen und als Bewegungsprofil aufgezeichnet werden. Das Profil enthält auch Tempoänderungen und Stopps.
-
-Die Ghost-Vergleichszeit beginnt mit der Zielpace. Eine langsamere erste Runde kann deshalb bereits ein gemessener persönlicher Session-Rekord sein, während der Ghost weiterhin die schnellere Zielvorgabe nutzt.
-
-Der Tempo-Partner verwendet eine eigene Runden-Uhr und läuft nach jeder Runde weiter. Er wartet am Rundenende nicht auf den Nutzer. Eine stehende Person oder ein fehlendes Laufbandsignal hält ihn deshalb nicht an.
-
-### Ghost-Geschwindigkeit testen
-
-**Ghost-Geschwindigkeit testen** überschreibt ausschließlich das Ghost-Tempo. Mit 0 km/h bleibt der Ghost stehen. Im Testmodus läuft er unabhängig über Rundengrenzen weiter; Änderungen am Testtempo erhalten seine aktuelle Position.
-
-**Zurück zur Bestzeit** stellt die normale Wiedergabe wieder her. Dabei kann die Ghost-Position auf das zur aktuellen Rundenzeit passende Profil springen. Die gespeicherte Bestzeit-Aufnahme wird durch die Tempoüberschreibung nicht gelöscht. Pause und Stoppen frieren auch die Ghost-Testbewegung ein.
-
-### Sichtbare Rekordzeiten
-
-**Deine Rekordzeiten** zeigt ausschließlich gemessene Nutzerzeiten für:
-
-- den schnellsten vollständigen 100-m-Abschnitt;
-- die beste vollständige 400-m-Runde;
-- den schnellsten vollständigen Kilometer.
-
-Ziel-/Beispielzeiten zählen nicht als Rekord. Unvollständige Anfangsabschnitte zählen ebenfalls nicht. Anzeigeformat: `Minuten:Sekunden,Zehntel`. Ohne Messung steht dort „Noch kein Rekord“.
-
-Diese Rekorde gelten nur für die aktuelle App-Session. Neukonfiguration, Zurücksetzen, Wechsel der Laufumgebung oder App-Neustart beginnen eine neue Rekorderfassung. Nach einem Verbindungsabbruch kann das Dashboard zuletzt empfangene Werte mit entsprechendem Hinweis anzeigen.
-
-## Kalibrierung und Feinausrichtung
-
-Kalibrierungsaktionen pausieren einen laufenden Lauf automatisch und warten auf eine Bestätigung der Brille. Danach wird nicht automatisch weitergelaufen. Die aktuelle Platzierung muss für Feinverschiebungen gültig sein.
-
-### Ganze Bahn verschieben oder drehen
-
-Unter **Feinausrichtung der Laufwelt**:
-
-- entlang und quer: ±1 cm, ±10 cm oder ±1 m;
-- Drehung: ±0,5° oder ±1°;
-- direkte absolute Eingaben: entlang/quer jeweils −100 bis +100 m, Drehung −180 bis +180°.
-
-Die Werte beziehen sich auf den Rahmen der letzten Grundkalibrierung. Absolute 0 setzt den jeweiligen Feinversatz zurück. **Feinversätze zurücksetzen** entfernt die horizontalen Verschiebungen und die Drehkorrektur, ohne die Grundkalibrierung zu löschen. Bahn und Avatar werden gemeinsam verschoben.
-
-Die Körpergrößen- und manuellen Höhenfelder sind aus dem Dashboard entfernt. Die Bodenhöhe kommt aus der Plane.
-
-### Feste echte 400-m-Bahn
-
-Unter **Laufumgebung** die **echte 400-m-Bahn** wählen. Der Wechsel beginnt eine neue pausierte Session. Ein bereits bestätigter Bodenmarker kann die feste Welt zunächst ausrichten.
-
-Für die genaue Ausrichtung an einer Standardbahn lässt sich zusätzlich das Zwei-Punkt-Verfahren verwenden:
-
-1. Bodenmarker und Floor-Plane erfassen.
-2. Auf der Messlinie von Bahn 1 an der gemeinsamen Start-/Ziellinie aufrecht stehen und **Punkt A hier übernehmen** wählen. Dieser Referenzpunkt entspricht im Modell dem Übergang der Zielgeraden in die erste Kurve.
-3. Eine bekannte Strecke von 5 bis 100 m entlang der Messlinie gegen den Uhrzeigersinn weitergehen, auch durch die Kurve. Standard im Formular: 20 m. Die Strecke anhand realer Markierungen oder einer Messung bestimmen; sie wird nicht automatisch gemessen.
-4. Die Strecke eintragen und am Endpunkt **Punkt B hier übernehmen** wählen.
-5. Die App passt Verschiebung und Drehung des Standardovals an. Eine stark unpassende direkte Basis wird abgewiesen. Das Modell wird nicht skaliert.
-6. **Ganze Bahn anzeigen**, die Passung vor Ort kontrollieren und bei Bedarf die gesamte Bahn fein verschieben oder drehen.
-7. Zur gewünschten Startposition gehen und den Lauf ausdrücklich starten.
-
-Im Stadionmodus bleibt die Welt fest. Der Nutzerfortschritt kommt aus der auf die Bahn-1-Messlinie projizierten Kopfposition. Rückwärtsgehen erzeugt keine zusätzliche Vorwärtsdistanz; große Tracking-Sprünge über 5 m pro Update werden verworfen. Eine neue Session setzt ihren Laufbezug an die aktuelle Stadionposition.
-
-Das Standardoval verwendet zwei 84,39-m-Geraden, 36,50 m Innenradius und acht 1,22 m breite Bahnen. Zwei Punkte erfassen keine abweichende Bahnform. Ein vollständiger Lauf auf einer realen 400-m-Bahn wurde noch nicht auf dem Gerät verifiziert.
-
-## Bedienung im Dashboard
-
-| Bereich / Aktion | Wirkung |
-| --- | --- |
-| Laufband | Konfiguration, Nutzertempo, Laufsteuerung, Live-Bahnansicht, Ghost-Testtempo und Rekorde |
-| Kalibrierung | Markerstatus, Laufumgebung, Avatar-Bahn, A/B-Punkte, Sweet Spot und Feinversätze |
-| Sensoren & Session | BLE-Status, Server-Session und Aufzeichnung |
-| Live-Bahnansicht | Virtuelle Nutzer-/Ghost-Position, Ghost-Geschwindigkeit und Vorsprung; keine GPS-Karte |
-| An Brille senden | Überträgt Session-Konfiguration und setzt Statistik sowie Ghost-Aufnahme zurück |
-| Lokal speichern | Speichert nur den Konfigurationsentwurf in diesem Browser |
-| Lauf starten | Startet bei gültiger Platzierung, setzt Avatar-Bahn 3; kein automatisches Statistik-Reset |
-| Pause / Weiter | Friert die Session ein bzw. setzt sie fort; Statistik bleibt erhalten |
-| Stoppen | Stoppt die Bewegung und erhält Statistik |
-| Lauf zurücksetzen | Pausiert und löscht Session-Fortschritt, Rekorde und Ghost-Aufnahme |
-| Log anzeigen | Zeigt Verbindungsereignisse, Befehle und Bestätigungen |
-
-Der Vorsprung auf der Karte ist positiv, wenn der Nutzer vor dem Ghost liegt. Veraltete Positionsmarker werden ausgeblendet. Die Brille sendet Telemetrie ungefähr fünfmal pro Sekunde.
-
-Die Laufuhr beginnt mit einer gestarteten, gültig platzierten Session – auch bei 0 km/h Nutzertempo. So kann der Avatar seine eigene Pace halten, während der Nutzer steht oder auf Laufbanddaten wartet. Nur Pause/Stoppen oder ein Verbindungsabbruch frieren die Session ausdrücklich ein.
-
-## Speicherung und Aufzeichnung
-
-App-Einstellungen, Ghost-Profil, Platzierung und Rekorde werden derzeit nicht dauerhaft über App-Neustarts gespeichert. Der Browser kann seinen lokalen Konfigurationsentwurf und die Log-Sichtbarkeit behalten. Das Server-Eventlog ist keine dauerhafte Trainingshistorie.
-
-**Server-Session** und **Unity-Lauf** sind getrennt: Eine Server-Session anlegen startet keinen Lauf auf der Brille. Eine Aufnahme kann auch ohne benannte Server-Session gestartet werden. Vor dem Beenden einer Server-Session muss ihre Aufnahme gestoppt werden.
-
-RunningServer legt unter `recordings/<Aufnahme-ID>/` an:
-
-- `ble_data.csv`
-- `exercise_detections.csv`
-- `commands.jsonl`
-- `session_meta.json`
-
-Die Dateien enthalten nur tatsächlich empfangene bzw. gesendete Daten. Aktuell meldet die Unity-Brücke für BLE nur den Verbindungszustand; sie überträgt noch keine vollständigen Herzfrequenz-/Temperatur-/SpO₂-Messdaten und keine Übungserkennung. Die vorhandenen Recorder-Dateinamen bedeuten nicht, dass diese Daten bereits geliefert werden. Laufbahnpositionen und Rekordzeiten haben derzeit keinen eigenen CSV-Export.
-
-Der Server unterstützt eine verbundene Brille und mehrere Dashboards. Es ist ein lokaler Dienst ohne Anmeldung/TLS. Port 8081 nicht öffentlich ins Internet freigeben.
-
-## Technischer Aufbau
+## 4. Architektur und Datenfluss
 
 ```mermaid
-flowchart LR
-    Tag[Bodenmarker] --> Tracker[MarkerAndAnchorTracker]
-    Plane[ARPlaneManager / Floor-Plane] --> Tracker
-    Tracker --> World[StraightTreadmillWorld]
-    Web[RunningServer-Dashboard] <-->|HTTP / WebSocket| Bridge[RunnerServerClient]
-    Bridge --> World
-    Input[RunnerSpeedInput] --> World
-    Head[XR-Headtracking] --> World
-    World --> Side[TreadmillCompanion]
+flowchart TD
+    Dashboard[Web-Dashboard] <-->|Befehle und Telemetrie| Server[Externer RunningServer]
+    Server <-->|WebSocket und JSON| Client[RunnerServerClient]
+    XR[Magic Leap: Marker, Planes und Headtracking] --> Tracker[MarkerAndAnchorTracker]
+    Tracker -->|Bestätigte Bodenpose| World[StraightTreadmillWorld]
+    Client -->|Session, Tempo und Kalibrierung| World
+    Speed[RunnerSpeedInput] -->|Nutzertempo| World
+    Geometry[StadiumTrackGeometry] --> World
+    World --> Companion[TreadmillCompanion: SideBySide]
     World --> Stats[ActiveStatsDisplay]
-    Stats --> Ghost[LapGhostPlayback]
-    Stats --> Records[LapCheckpointTracker]
-    Records --> Profile[LapGhostRecording]
-    Profile --> Ghost
+    Stats --> Checkpoints[LapCheckpointTracker]
+    Checkpoints --> Recording[LapGhostRecording]
+    Recording --> Playback[LapGhostPlayback: TempoPartner]
+    World --> Playback
+    Stats --> Client
+    Playback --> Client
+    BLE[BleConnection und GATT] --> Measurements[SensorMeasurements]
+    Measurements --> SensorUI[HeartRateUI]
+    BLE -->|Verbindungsstatus| Client
 ```
 
-| Datei / Komponente | Aufgabe |
+Die Architektur ist komponentenbasiert. Unity-`MonoBehaviour`-Komponenten verbinden Szene, Gerätefunktionen und Darstellung. Reine C#-Klassen übernehmen Geometrie, Geschwindigkeitswahl, Checkpoints und Ghost-Daten, sodass sich diese Logik auch ohne laufende Unity-Szene prüfen lässt.
+
+`StraightTreadmillWorld` ist die zentrale Laufwelt-Komponente. `RunnerServerClient` verbindet die Fernsteuerung mit dieser Welt. `ActiveStatsDisplay` übernimmt neben der Anzeige auch die Session-Uhr, Checkpoint-Auswertung und Synchronisation der Ghost-Wiedergabe. Das HUD ist daher derzeit auch Teil der Lauf- und Ghost-Logik.
+
+### 4.1 Ablauf beim Start
+
+1. Die aktive Build-Szene `Assets/Scenes/TreadmillStraightTest.unity` wird geladen.
+2. `RunnerServerClient` installiert sich über die Laufzeit-/Szeneninitialisierung in einer passenden Laufszene und sucht seine Komponenten.
+3. Die Session bleibt zunächst gestoppt beziehungsweise pausiert. Der Client bindet den Marker-Tracker an die gemeinsame Laufwelt.
+4. Marker und Bodenfläche werden erfasst. Ein stabiler Scan, eine passende getrackte Floor-Plane samt Polygon und gültiges Headtracking sind erforderlich.
+5. Der Tracker übergibt die bestätigte Bodenpose an `PlaceFromMarkerPlane(...)`.
+6. Laufbahn und Avatar erscheinen automatisch; der Avatar startet auf Bahn 3. Dieser Spawn ist auch ohne Serververbindung möglich.
+7. Das Dashboard konfiguriert Modus und Pace und startet den Lauf ausdrücklich.
+8. Pro Frame werden Weltbewegung beziehungsweise physischer Fortschritt ausgewertet. HUD, Checkpoints und Avatar werden aktualisiert; Telemetrie geht ungefähr mit 5 Hz an den Server.
+
+### 4.2 AR-Platzierung
+
+Der normale Ablauf verwendet einen AprilTag aus `Dictionary_36H11` mit konfigurierter Kantenlänge 0,1 m. Der Scan benötigt mindestens drei Messungen. Eine bereits erfasste Markerbeobachtung kann verwendet werden, wenn die Plane-Erkennung erst später ein gültiges Ergebnis liefert.
+
+Bei einer kleinen Höhendifferenz kann die Markerposition auf den Boden projiziert werden. Bei fehlerhafter Marker-Tiefe kann stattdessen der Sichtstrahl von der beim Scan gespeicherten Kameraposition zur Markerpose mit einer geeigneten Floor-Plane geschnitten werden. Polygon, Richtung und Entfernung werden geprüft.
+
+Nach bestätigter Platzierung wird die Welt nicht ständig an neue Markerposen angehängt. Ein erneuter Scan erfolgt ausdrücklich über `scene.rescanMarker`. Dabei pausiert der Lauf, Bahn und Avatar werden vorübergehend ausgeblendet, und die bestehende Zeit/Distanz bleibt erhalten. Die Platzierung wird nicht dauerhaft über App-Neustarts gespeichert.
+
+### 4.3 Nutzerbewegung und Avatarbewegung
+
+Im Laufbandmodus integriert die Welt die Nutzergeschwindigkeit über die Zeit. Dabei bewegt sie die virtuelle Szenerie und lässt das physisch getrackte XR-Rig unverändert. Das Standardoval kann durch eine ältere Variante mit wiederholten geraden Kacheln ersetzt werden.
+
+Im Stadionmodus wird die Kopfposition in lokale Bahnkoordinaten umgerechnet und auf die Bahn-1-Referenz projiziert. Rückwärtsbewegung erzeugt keine zusätzliche Vorwärtsdistanz; große Tracking-Sprünge über 5 m pro Update werden verworfen.
+
+**Nutzertempo und Ghost-Tempo sind getrennt.** `FixedTest` liefert feste Nutzer-km/h; `Treadmill` erwartet zeitgestempelte Sensormesswerte. Fehlende, ungültige oder mehr als zwei Sekunden alte Laufbandwerte liefern 0 km/h. Der Tempo-Partner kann während einer gestarteten Session trotzdem weiterlaufen. Bei expliziter Pause frieren Uhr und Ghost ein.
+
+### 4.4 Geometrie und Kalibrierung
+
+Das Oval verwendet zwei 84,39-m-Geraden, 36,50 m Innenradius, acht Bahnen und 1,22 m Bahnbreite. Die Messlinie von Bahn 1 liegt 0,30 m vom Innenrand entfernt. Ihre geometrische Länge beträgt ungefähr 400,0012 m; die Laufstatistik verwendet eine 400-m-Referenz.
+
+`EvaluateAlignedLane(...)` bildet dieselbe Referenzposition auf verschiedene Bahnen ab. Außenbahnen sind länger; `LaneSpeedScale(...)` berücksichtigt die abweichende Bewegung in den Kurven.
+
+Für eine reale Stadionbahn können zwei Punkte A/B mit bekannter Strecke entlang der Bahn aufgenommen werden. Daraus werden Verschiebung und Drehung des Standardovals bestimmt. Das Modell wird dabei nicht skaliert. Feinversätze verschieben oder drehen die gesamte Laufwelt relativ zur Grundkalibrierung.
+
+## 5. Projekt-Skripte und ihre Funktionen
+
+Die folgenden Tabellen decken alle eigenen C#-Skripte unter `Assets/Scripts` ab. Aufgeführt sind die Aufgaben und die wesentlichen Einstiegspunkte; interne Formatierungs-, Aufräum- und Hilfsmethoden werden zusammengefasst.
+
+### 5.1 Tracking und Eingabe – `Assets/Scripts/`
+
+| Skript | Aufgabe und wichtige Funktionen |
 | --- | --- |
-| [RunnerServerClient.cs](Assets/Scripts/StadionTracking/RunnerServerClient.cs) | Serververbindung, Befehle im Hauptthread, Bestätigungen und Telemetrie |
-| [MarkerAndAnchorTracker.cs](Assets/Scripts/MarkerAndAnchorTracker.cs) | AprilTag-Erkennung, Plane-Auswahl und Übergabe an die gemeinsame Laufwelt |
-| [FloorMarkerPlacement.cs](Assets/Scripts/StadionTracking/FloorMarkerPlacement.cs) | Scan-Gültigkeit, Bodenprojektion und Floor-Ray-Abgleich |
-| [StraightTreadmillWorld.cs](Assets/Scripts/StadionTracking/StraightTreadmillWorld.cs) | Platzierung, Umgebungsmodus, Fortschritt, Nutzer-Geschwindigkeit und Feinversätze |
-| [RunnerSpeedInput.cs](Assets/Scripts/StadionTracking/RunnerSpeedInput.cs) | Feste Testgeschwindigkeit und zukünftige Laufbandwerte mit Signal-Timeout |
-| [TreadmillCompanion.cs](Assets/Scripts/StadionTracking/TreadmillCompanion.cs) | Side-by-Side-Avatar und Sweet Spot |
-| [LapGhostPlayback.cs](Assets/Scripts/StadionTracking/LapGhostPlayback.cs) | Ghost-Darstellung und unabhängiges Testtempo |
-| [LapCheckpointTracker.cs](Assets/Scripts/StadionTracking/LapCheckpointTracker.cs) | Kontrollpunkte und gemessene Session-Rekorde |
-| [StadiumTrackGeometry.cs](Assets/Scripts/StadionTracking/StadiumTrackGeometry.cs) | Oval, acht Bahnen, Projektion und Tangenten |
-| [StadiumCalibration.cs](Assets/Scripts/StadionTracking/StadiumCalibration.cs) | Zwei-Punkt-Ausrichtung ohne Skalierung |
-| `RunningServer/public/app.js` / `style.css` | Dashboard und Gestaltung |
-| `RunningServer/server.js` | HTTP-Endpunkte, WebSocket-Relay, Sessions und Recorder |
+| `MarkerAndAnchorTracker.cs` | Initialisiert Magic-Leap-Markererkennung und Plane-Erkennung, verwaltet Markerzustände und geglättete Bodenflächen. `BindRunningWorld(...)` bindet die gemeinsame Laufwelt; `UpdateRunningTrackPlacement()` prüft deren Platzierung; `FindFloorAlongMarkerRay(...)` sucht einen Bodenstrahlschnitt. Enthält außerdem den älteren separaten Marker-Avatar-Ablauf, Plane-Auswahl, Polygonprüfung und Diagnoselogs. |
+| `Gestures.cs` | Verbindet Input Actions `Aim`, `PinchValue` und `PinchReady` mit einem XR-Ray-Interactor. `SetupInteractor()` richtet Zeiger und Pinch-Button mit Schwelle 0,7 ein; `Update()` übernimmt die Handpose; `UpdateSliderDrag()` bedient Slider. Fordert auf Android Handtracking-Berechtigung an und räumt erzeugte Actions auf. |
+| `UIScript.cs` | Oberfläche für den `StadiumTrackPreview`-Läufer: `BindRunner(...)`, Slider, manuelle Geschwindigkeit/Zielrundenzeit, Animationsanbindung, Statistik und Kartenanbindung. Richtet bei Bedarf das XR-UI-Inputmodul ein. Dieser Pfad ist vom aktuellen Dashboard-gesteuerten Weltablauf zu unterscheiden. |
 
-Die einzige aktivierte Build-Szene ist [TreadmillStraightTest.unity](Assets/Scenes/TreadmillStraightTest.unity). Der historische Name „Straight“ ist geblieben, obwohl das Oval verwendet wird. `RunnerMainMenu` gehört nicht mehr zum Build und leitet beim manuellen Öffnen zur Laufszene weiter. `SampleScene` enthält den älteren separaten Marker-/Avatarablauf und ist im Build deaktiviert.
+### 5.2 Laufwelt und Konfiguration – `Assets/Scripts/StadionTracking/`
 
-## Bauen und Prüfen
-
-### Voraussetzungen
-
-- Unity **2022.3.62f3** mit Android Build Support, SDK/NDK/JDK.
-- Magic Leap Unity SDK, OpenXR, AR Foundation und Projektpakete gemäß [manifest.json](Packages/manifest.json).
-- Node.js **22 oder neuer** und npm für RunningServer.
-- ADB und eine für USB-Debugging freigegebene Magic Leap 2.
-
-Das Magic-Leap-SDK wird derzeit lokal aus `/Users/kaan/MagicLeap/tools/unity/v2.6.0/com.magicleap.unitysdk.tgz` eingebunden. Auf einem anderen Rechner muss dieser Pfad angepasst werden.
-
-### Geräte-Build
-
-In Unity **File → Build Settings**, Ziel **Android**, Szene `TreadmillStraightTest` aktivieren und **Build And Run** auf die angeschlossene Brille ausführen. Für den Marker-Spawn muss die Brille getragen werden und Headtracking liefern.
-
-[Build/MarkerFloorFix.apk](Build/MarkerFloorFix.apk) war der zuletzt erfolgreich auf der Brille geprüfte Build. Er bestätigt Marker 39, Floor-Plane und aktiven Ghost auf Bahn 3 bei gestoppter Session. **Die danach ergänzte Nutzer-Geschwindigkeitsauswahl ist darin noch nicht enthalten.** Dafür erneut aus dem aktuellen Quellcode bauen.
-
-### Vorhandene Prüfungen
-
-- Die Runtime-Quellen wurden mit Unity-C#-Compiler und Projektassemblys kompiliert.
-- Eigenständige Prüfungen unter `Tests/StadionTracking/` decken Floor-Ray-/Bodenprojektion, verzögerte Plane-Erkennung, Stadiongeometrie, Zwei-Punkt-Ausrichtung, Ghost-Testbewegung, Rekorde und Nutzer-Geschwindigkeitsquellen ab.
-- Im Serverordner führt `npm test` die sechs HTTP-/WebSocket-Integrationstests aus.
-- `node --check public/app.js` prüft die Dashboard-Syntax.
-
-Ältere Editor-Prüfungen können noch Hauptmenü- oder Körpergrößen-Abläufe voraussetzen. Ein bestandener Geometrie-/Server-Test ersetzt keinen physischen 400-m-Gerätetest.
-
-## Fehlersuche
-
-| Symptom | Prüfen |
+| Skript | Aufgabe und wichtige Funktionen |
 | --- | --- |
-| Webseite zeigt alten Stand | Richtiges Verzeichnis und Port 8081 verwenden, Seite neu laden; Unity-Änderungen separat bauen/installieren |
-| Port 8081 bereits belegt | Laufenden Server prüfen; keinen zweiten Server auf demselben Port starten |
-| Dashboard ohne Brille | App aufsetzen/öffnen; USB-Debugging und `adb reverse` bzw. LAN-Adresse prüfen |
-| Neue Schaltfläche deaktiviert | App-Verbindung, gültige Platzierung und gemeldete Befehlsunterstützung prüfen; älteren Build aktualisieren |
-| Marker erkannt, Bahn fehlt | Markerstatus lesen; Floor-Plane, Polygon und Headtracking müssen bestätigt sein |
-| Marker nicht erkannt | 36H11-Tag, echte Kantenlänge, Berechtigungen, Sichtbarkeit und Beleuchtung prüfen |
-| Falsche Marker-Tiefe | Status/Log auf Floor-Ray-Abgleich prüfen; keine künstliche Körperhöhe eintragen |
-| Avatar fehlt vor Scan | Erwartet: Er erscheint erst nach gültigem Bodenmarker samt Plane |
-| Avatar-Bahn springt auf 3 | Erwartet bei automatischem Spawn, erneutem Scan und „Lauf starten“; „Weiter“ erhält die gewählte Bahn |
-| Sweet Spot ändert Ghost nicht | Sweet Spot gilt nur für Side by Side; für beide Modi die Avatar-Bahn oder die gesamte Laufwelt verstellen |
-| Nutzer bleibt bei 0 km/h | Laufbandquelle ohne aktuelle Sensordaten; zum Testen feste Nutzer-km/h wählen |
-| Ghost und Nutzer sind unterschiedlich schnell | Getrennte Einstellungen: Nutzertempo, Ghost-Zielpace und Ghost-Testtempo prüfen |
-| Rekorde verschwunden | Neukonfiguration, Reset, Umgebungswechsel oder App-Neustart löschen die Session-Werte |
+| `StraightTreadmillWorld.cs` | Zentrale Laufwelt: Platzierung, Distanz, virtuelle Weltbewegung, feste Stadionwelt und Kalibrierung. `BeginMarkerPlacement()`/`PlaceFromMarkerPlane(...)` steuern den Bodenbezug; `AdvanceSimulation(...)` die Simulation; `UpdatePhysicalProgress(...)` den Headtracking-Fortschritt. `SetTrackEnvironment(...)`, `SetAvatarLane(...)`, `CaptureTrackPointA/B(...)` und `SetCalibrationOffsets(...)` konfigurieren die Welt. `ConfigureUserSpeed(...)`, `ReportTreadmillSpeedKmh(...)` und `ClearTreadmillSignal()` bilden die Geschwindigkeits-API. `GetLanePoseAtDistance(...)` liefert Avatarposen; `ResetDistance()` setzt den Laufbezug zurück. Enthält zusätzlich ältere Höhenkalibrierungswege. |
+| `RunnerSpeedInput.cs` | Reine C#-Logik zur Wahl von `FixedTest` oder `Treadmill`. `SelectSource(...)` wechselt die Quelle, `ReportTreadmill(...)` nimmt gültige Messwerte mit Zeitstempel an, `HasFreshTreadmill(...)` prüft die Signalfrische, `SpeedKmh(...)` liefert das verwendbare Tempo. `InvalidateTreadmill()` löscht die Signalverfügbarkeit. |
+| `RunnerSessionSettings.cs` | Statische Einstellungen innerhalb des laufenden Prozesses: Pace in Sekunden/km, Körperhöhe, Avatar-Modus, Bahnsichtbarkeit und `Pending`. Ausgangswerte im Code: 360 s/km, 184 cm, `TempoPartner`, sichtbare Bahn. Kein dauerhafter Datenspeicher. |
+| `RunnerSessionBootstrap.cs` | Übernimmt in `Awake()` ausstehende Menüeinstellungen in Welt und Begleiter und löscht danach `Pending`. Gehört zur Übergabe des älteren Menüablaufs. |
+| `TreadmillHeightSetup.cs` | Ältere Höhen-/Bodeneinrichtung mit Menü, Zifferneingabe, Bodenursprung und manueller Korrektur. `PrepareMenu()`, `ApplyHeight()`, `ApplyFloor()`, `Adjust(...)` und `Finish()` organisieren diesen Ablauf. Die aktuelle Marker-/Plane-Platzierung benötigt diese Körperhöheneingabe nicht. |
+
+### 5.3 Bahnmodell und älterer Vorschau-Läufer
+
+| Skript | Aufgabe und wichtige Funktionen |
+| --- | --- |
+| `StadiumTrackGeometry.cs` | Reines Bahnmodell. `Radius(...)` und `Length(...)` liefern Bahndimensionen; `Evaluate(...)` Position und Tangente nach geometrischer Strecke; `EvaluateAlignedLane(...)` nebeneinander ausgerichtete Bahnen; `LaneSpeedScale(...)` die Geschwindigkeitskorrektur; `Project(...)` die nächste Streckenposition; `DetectLane(...)` die Bahnnummer. |
+| `StadiumCalibration.cs` | Mathematische Hilfen: `SolveYaw(...)` bestimmt die Ausrichtung zwischen Modell- und Weltbasis; `WrappedDelta(...)` behandelt den Übergang zwischen Rundenende und Rundenanfang. |
+| `FloorMarkerPlacement.cs` | Unity-unabhängige Platzierungslogik: `CanUseScan(...)` bewertet Scan-Reife/-Zeitpunkt, `TryProject(...)` projiziert auf eine Ebene, `TryIntersectFloor(...)` prüft und berechnet einen Bodenstrahlschnitt. Die Zuordnung zum konkreten Plane-Polygon bleibt Aufgabe des Trackers. |
+| `StadiumRunProgress.cs` | Einfacher Distanz-/Rundenzähler für den Vorschau-Läufer. `Advance(...)` integriert Geschwindigkeit und Zeit; `CompletedLaps` liefert abgeschlossene Runden. |
+| `StadiumPacing.cs` | Definiert `ManualSpeed` und `TargetLapTime`. `SpeedForLapTime(...)` rechnet Bahnlänge und Zielrundenzeit in Geschwindigkeit um. |
+| `StadiumPreviewSettings.cs` | Serialisierbare Einstellungen und `StadiumAnchorMode` für den markerbasierten Vorschau-Läufer, einschließlich seiner Strecken-/Darstellungsparameter. |
+| `StadiumTrackPreview.cs` | Eigenständiger Avatar-Läufer für den älteren Marker-/Vorschaupfad. `Initialize(...)` setzt Bezug und Bahn; `AlignAvatar(...)` richtet das Modell aus; `AdvanceRun(...)` aktualisiert Fortschritt; `GetRunningPose(...)` liefert die Pose. Unterstützt Slidergeschwindigkeit, Zielrundenzeit, Animationskalibrierung und gezeichnete Routen. |
+| `SimpleTrackMap.cs` | Definiert Kartenmaße und wandelt mit `ToUv(...)` lokale X/Z-Bahnkoordinaten in Karten-UVs um. |
+| `RunnerMapMarker.cs` | Bindet mit `BindRunner(...)` einen Vorschau-Läufer an die Minikarte. Aktualisiert in `LateUpdate()` den Punkt; die zusätzliche Klasse `RunnerMapDot` zeichnet dessen UI-Mesh. |
+
+### 5.4 Avatar, Ghost und Rekorde
+
+| Skript | Aufgabe und wichtige Funktionen |
+| --- | --- |
+| `TreadmillCompanion.cs` | Stellt den SideBySide-Begleiter dar und definiert `TreadmillRunMode`. `ConfigurePlacement(...)` setzt Richtung, Abstand und Blickrichtung; `UseLanePlacement()` aktiviert die Bahnauswahl; `SetMode(...)` wählt den Modus; `Synchronize()` erzeugt/positioniert/animiert den Begleiter. Im TempoPartner-Modus wird dieser Avatar ausgeblendet, weil dort die Ghost-Wiedergabe zuständig ist. |
+| `LocomotionTiming.cs` | `Evaluate(...)` berechnet aus Geschwindigkeit und kalibrierten Geh-/Laufgeschwindigkeiten die Animationsmischung und zeitliche Wiedergabe. Verbindet Distanztempo und sichtbare Gangart. |
+| `LapCheckpointTracker.cs` | Wertet mit `Update(distance, elapsed)` 100-m-Checkpoints, Runden und Kilometer aus. Interpoliert Grenzübertritte zwischen Updates, verwaltet Vergleichszeiten und tatsächlich gemessene Rekorde und versorgt `GhostRecording`. Ziel-/Beispielwerte sind von gemessenen Rekorden getrennt. |
+| `LapGhostRecording.cs` | Speichert Zeit-/Distanzpunkte einer vollständigen Runde und übernimmt ein geeignetes neues Bestprofil. `Begin(...)`, `Record(...)`, `Finish(...)` werden vom Tracker genutzt; normale Samples sind auf ungefähr 10 Hz begrenzt. `Evaluate(...)` interpoliert innerhalb einer Runde, `EvaluateContinuous(...)` spielt Runden fortlaufend ab. Daten bleiben im Arbeitsspeicher. |
+| `LapGhostPlayback.cs` | Erzeugt und animiert den TempoPartner-Avatar. `Synchronize(...)` verbindet Session-Uhr, Bestprofil und Weltpose; `SetTestSpeed(...)` aktiviert/deaktiviert das separate Ghost-Testtempo; `ResetTestPosition()` setzt dessen Fortschritt zurück. Misst den Sohlenversatz und räumt erzeugte Avatarobjekte auf. |
+| `GhostTestMotion.cs` | Reiner Testtempo-Integrator. `SetSpeed(...)` übernimmt ein optionales Tempo und die aktuelle Distanz; `Advance(...)` bewegt nur bei laufender Session; `Reset()` setzt die Distanz zurück. |
+| `ActiveStatsDisplay.cs` | Betreibt HUD, Session-Uhr, Checkpoint-Tracker und Ghost-Synchronisation. `ResetSessionStats()` löscht Zeit/Rekorde/Aufnahme; `BindRunner(...)` bindet den Vorschaupfad; `LateUpdate()` ermittelt die aktive Welt, aktualisiert Uhr und Distanz und ruft die Ghost-Wiedergabe auf. Formatiert Pace, Zeit und Checkpointvergleich. |
+
+Ein vollständiger 100-m-/400-m-/1-km-Abschnitt ist für einen gemessenen Rekord erforderlich. Eine langsamere erste Runde kann ein persönlicher Session-Rekord sein, während der Ghost weiterhin eine schnellere Zielvorgabe verwendet. Neu konfigurieren, Zurücksetzen, Umgebungswechsel und App-Neustart beginnen eine neue Rekorderfassung.
+
+### 5.5 Oberfläche und lokale Navigation
+
+| Skript | Aufgabe und wichtige Funktionen |
+| --- | --- |
+| `RunnerArPanel.cs` | Registriert aktive AR-Panels und positioniert sie relativ zur Kamera und zum vorgesehenen Sichtbereich. Unterscheidet Hauptmenü und Lauf-HUD. |
+| `RunnerGlassGraphic.cs` | Eigene uGUI-`MaskableGraphic`, die über `OnPopulateMesh(...)` die Panel-Fläche zeichnet. `FlatSurface` verändert die Darstellungsvariante. |
+| `RunnerUiTheme.cs` | Gemeinsame Farben, Schrift und UI-Erzeugung. `StyleText(...)`, `Panel(...)`, `Rect(...)`, `Text(...)`, `Button(...)` und `Rule(...)` erstellen beziehungsweise gestalten Canvas-Elemente. Lädt die Schrift aus `Resources/RunnerUI/RunnerSans`. |
+| `RunnerMainMenu.cs` | Älteres lokales Startmenü. `ChangePace(...)`, `ChangeHeight(...)`, `SetMode(...)`, `ToggleTrackVisibility()` bearbeiten Session-Einstellungen; `Refresh()` aktualisiert Texte; `StartSession()` startet den Szenenübergang. |
+| `RunnerSessionNavigation.cs` | Ältere lokale Pause-/Menünavigation. `TogglePause()` pausiert/reaktiviert die Welt und speichert dazu das Tempo; `BackToMenu()` lädt `RunnerMainMenu`. Diese Szene ist aktuell nicht in der aktiven Build-Szenenliste enthalten. |
+
+### 5.6 Netzwerk
+
+| Skript | Aufgabe und wichtige Funktionen |
+| --- | --- |
+| `RunnerServerClient.cs` | Installiert und initialisiert die Serverbrücke, bindet Laufwelt/Tracker/HUD/Begleiter, liest die Serverkonfiguration und hält die WebSocket-Verbindung. `ConnectLoop(...)` verbindet mit wachsender Wartezeit erneut; `Receive(...)` liest Nachrichten. Thread-sichere Queues übergeben Nachrichten an `Update()`, sodass Unity-Aktionen auf dem Hauptthread laufen. `Handle(...)` verarbeitet Nachrichten und Bestätigungen; `Apply(...)` führt die unterstützten Befehle aus; `SpawnOnStartLane()` setzt den Startavatar auf Bahn 3. Sendet Registry, Telemetrie und ACKs und pausiert bei Verbindungsabbruch. |
+
+## 6. Serversteuerung und Zustände
+
+Die eingebaute Adresse steht in `Assets/Resources/RunnerServer.json`: `ws://127.0.0.1:8081/ws`. Eine Datei `runner-server.json` in `Application.persistentDataPath` kann sie überschreiben. Bei USB verbindet `adb reverse tcp:8081 tcp:8081` die Brillenadresse mit dem Server auf dem Rechner. Für WLAN wird die erreichbare LAN-Adresse des Rechners benötigt.
+
+Nach dem Verbindungsaufbau sendet Unity `hello` mit Rolle `headset` und anschließend eine `registry` mit unterstützten Befehlen. Das Dashboard darf nur auf tatsächlich gemeldete Fähigkeiten vertrauen.
+
+| Befehlsgruppe | Funktion |
+| --- | --- |
+| `runningMate.configure` | Pace, Modus und Bahnsichtbarkeit konfigurieren; Statistik/Aufnahme zurücksetzen und pausieren |
+| `runningMate.command` | `spawn`, `start`, `pause`, `resume`, `stop`, `reset`, `despawn` |
+| `runningMate.setLane` | Avatar-Bahn 1–8 auswählen |
+| `runningMate.setUserSpeed` | Feste Nutzer-km/h oder Laufbandquelle wählen |
+| `runningMate.setGhostSpeed` | Separates Ghost-Testtempo; `null` aktiviert normale Wiedergabe |
+| `scene.setTrackEnvironment` | Laufband oder feste Stadionwelt auswählen |
+| `scene.rescanMarker` | Neue Marker-/Bodenplatzierung anfordern |
+| `scene.captureTrackPoint` | Stadionreferenz A/B erfassen |
+| `runningMate.adjust` | Absolute Feinverschiebung/Drehung oder Rücksetzen der Feinversätze |
+| `avatar.configurePlacement`, `avatar.reposition` | Relative SideBySide-Platzierung beziehungsweise erneute Blickausrichtung |
+| `scene.setRunningMatePathVisible` | Bahn ein-/ausblenden |
+| `scene.setRunningMateHudVisible`, `scene.setHudVisible` | HUD ein-/ausblenden |
+| `sensor.connect`, `sensor.disconnect` | Vorhandene BLE-Verbindung bedienen; kein neuer Scan durch diese Befehle |
+
+Kompatibilitätswege für Körperhöhe und manuelle Höhenkorrektur bleiben im Code, gehören aber nicht zum aktuellen Dashboard-Ablauf. Die genaue Payload-Struktur steht in [Docs/RunningServer.md](Docs/RunningServer.md).
+
+Der Client meldet `Stopped`, `Ready`, `Running` oder `Paused`. Sichtbarer Avatar und laufende Session sind getrennte Zustände. `start`/`spawn` setzen Bahn 3, `resume` erhält die später gewählte Bahn. Ein Verbindungsabbruch pausiert; ein Wiederverbinden startet nicht automatisch weiter.
+
+Telemetrie enthält Nutzerdistanz, Zeit, Tempo, Runden, Umgebung, gewählte Quelle, Marker-/Kalibrierungsstatus, Avatar-Bahn, Ghost-Daten und Rekorde. Die Laufdaten stehen unter `data.treadmill` sowie kompatibel unter `data.runningMate`; hinzu kommen BLE-Verbindungsstatus und HUD-Sichtbarkeit.
+
+## 7. BLE-Sensorarchitektur und Skripte
+
+Das eigene Embedded Package liegt unter `Packages/com.kaan.ble-sensors`. Es besitzt getrennte Runtime-/Editor-Assemblies. Die Szene behält ihre eigenen XR-Eingaben; das Paket installiert kein XR-Rig.
+
+```text
+HeartRateUI → BleConnection → Velorexe / AndroidBleGattBackend
+                    ↓                    ↓
+             BleDeviceProfile       BleGattQueue
+                    └──────────┬─────────┘
+                         Empfangene Bytes
+                               ↓
+                       SensorMeasurements
+                               ↓
+                 HeartRateParser / CosinussParsers
+                               ↓
+                     Messwertanzeige / Events
+```
+
+| Skript unter `Runtime/` | Aufgabe und wichtige Funktionen |
+| --- | --- |
+| `BleConnection.cs` | Allgemeine Gerätesuche, Auswahl, Verbindung und Ereignisse. `StartScan()`, `StopScan()`, `SelectDevice(...)`, `Connect()`, `Disconnect()` bedienen den Lebenszyklus. `Read(...)`, `Subscribe(...)`, `HasCharacteristic(...)` bilden GATT-Zugriffe ab. Verwaltet Gerätekandidaten, Laufzeitberechtigungen und Aufräumen. |
+| `BleDeviceProfile.cs` | `BleDeviceProfile` definiert Filter und Kanäle als ScriptableObject. `Matches(...)` prüft Geräte, `Validate()` die Konfiguration. `BleChannel` beschreibt Service/Characteristic, Datenformat und Update-Modus; `BleUuid.Normalize(...)`/`Key(...)` vereinheitlichen UUIDs. |
+| `BleGattQueue.cs` | Serialisiert GATT-Aufträge. `Enqueue(...)` legt Aufträge ab, `Tick(...)` bearbeitet Ablauf/Timeouts, `Handle(...)` ordnet native Antworten zu. Meldet Abschluss/Fehler und räumt mit `Clear()`/`Dispose()` auf. |
+| `AndroidBleGattBackend.cs` | Implementiert `IBleGattBackend` über JNI und das native Companion-JAR; stellt Characteristic-Eigenschaften, Lesen und Abonnieren bereit. |
+| `SensorMeasurements.cs` | Abonniert BLE-Ereignisse und dekodiert Profilkanäle. Verwaltet Messwerte und deren Anzeigezustand; berücksichtigt verschiedene Sauerstoff-Datenformate. |
+| `HeartRateParser.cs` | `ParseMeasurement(...)` liest standardisierte Herzfrequenzpakete einschließlich Flags und RR-Intervallen; `Parse(...)` liefert nur BPM. |
+| `CosinussParsers.cs` | Dekodiert Temperatur, Pulsoximetrie, Batterie und Sensorstatus. Enthält IEEE-11073-/Half-Float-Konvertierungen und Fehlerbeschreibungen. |
+| `CosinussProfileDefaults.cs` | `Create(...)` erstellt ein Standardprofil für cosinuss-Kanäle, optional mit übergebenen Herzfrequenz-UUIDs. |
+| `HeartRateUI.cs` | Verknüpft Scan-/Stop-/Connect-/Disconnect-Buttons, Geräte-Dropdown sowie Status- und Messwerttexte mit Verbindung und Messwertkomponente. |
+| `HeartRateBLE.cs` | Kompatibilitätsklasse auf Basis von `BleConnection`; erstellt bei fehlendem Profil über `CreateFallbackProfile()` die cosinuss-Standardkonfiguration. |
+| `CosinussMeasurements.cs` | Kompatibilitätsklasse, die von `SensorMeasurements` erbt. |
+
+`Editor/BleProfileMenu.cs` stellt den Menüpunkt **Assets → Create → BLE → Cosinuss-Standardprofil** bereit. `Runtime/Plugins/Android/cosinuss-gatt.jar` enthält die native Companion-Brücke. Das Android-Manifest und seine BLE-Berechtigungen sind für den Gerätebetrieb erforderlich.
+
+Das Paket kann Sensordaten lokal auswerten. Die RunningServer-Brücke überträgt derzeit nur den BLE-Verbindungsstatus, keine vollständigen Vitaldaten. **Die BLE-Sensoranbindung ist keine fertige Laufbandgeschwindigkeits-Anbindung.** Ein zukünftiger Adapter muss `ReportTreadmillSpeedKmh(...)` auf dem Unity-Hauptthread aufrufen und bei Signalverlust `ClearTreadmillSignal()` melden.
+
+Details und Einschränkungen stehen in [Packages/com.kaan.ble-sensors/README.md](Packages/com.kaan.ble-sensors/README.md).
+
+## 8. Editor-Werkzeuge
+
+Diese Dateien liegen unter `Assets/Editor` und gehören zu Einrichtung, Entwicklung und Prüfung, nicht zum Laufzeitablauf auf der Brille.
+
+| Skript | Funktion |
+| --- | --- |
+| `StraightTreadmillSetup.cs` | `CreateScene()` erstellt die gerade Testszene; weitere Menüpunkte ergänzen den älteren Höhenaufbau oder prüfen Bewegung, automatische Platzierung und Höhenmenü. |
+| `TreadmillOvalSetup.cs` | `ConfigureScene()` richtet die 400-m-Ovaldarstellung ein; `CreateMesh()` erzeugt ihre Geometrie; `VerifyMotion()` prüft die Weltbewegung. |
+| `TreadmillCompanionSetup.cs` | `ConfigureScene()` ergänzt den Begleiter; `Verify()` prüft ihn im Play Mode. |
+| `RunnerUiGuideSetup.cs` | `ApplyAll()` erzeugt/stylt UI-Assets, Canvases und das Hauptmenü; `AddTrackVisibilityOption()` ergänzt die Sichtbarkeitsoption. |
+| `TreadmillDeviceBuild.cs` | `Build()` baut die Laufszene als Android-Development-APK nach `Build/TreadmillMenuFix.apk`. Schreibt das Ergebnis nach `Temp/TreadmillPreviews/device-build-result.txt`. Menü: **Tools → Treadmill → Build device verification APK**. |
+| `LapCheckpointTrackerChecks.cs` | Prüft Checkpoints und Bestzeiten über einen Unity-Menüpunkt. |
+| `LapGhostChecks.cs` | Prüft Ghost-Aufnahme, Avatar und Positionsabgleich. |
+| `TreadmillRunModeChecks.cs` | Prüft beide Avatar-Modi im Play Mode. |
+| `RunnerUiChecks.cs` | Prüft beziehungsweise zeigt Menü, Sessionstart, Bahn, Pause, Sensor-UI und Läufersteuerung. Enthält auch Vorschau-/Szenenaktionen. |
+
+Einige Werkzeuge erwarten ältere Menü-/Höhenabläufe. Setup-Menüpunkte können Szenen und Assets verändern und sollten gezielt verwendet werden.
+
+## 9. Szenen, Prefabs und importierte Beispiele
+
+| Ressource | Bedeutung |
+| --- | --- |
+| `Assets/Scenes/TreadmillStraightTest.unity` | Aktuell einzige aktivierte Build-Szene. Trotz des historischen Namens wird sie auch für das Oval-/Marker-Lauftraining verwendet. |
+| `Assets/Scenes/SampleScene.unity` | Vorhandene alternative Szene, in den Build-Einstellungen deaktiviert. |
+| `Assets/Scenes/RunnerMainMenu.unity` | Älteres lokales Hauptmenü; derzeit nicht in der Build-Szenenliste. |
+| `Assets/Scenes/UI.unity` | Zusätzliche UI-Szene, derzeit nicht in der Build-Szenenliste. |
+| `Assets/Jogger.prefab` | Läufer-Prefab als wiederverwendbare Avatarressource. |
+| `Assets/MarkerPrefab.prefab` | Ressource des Markerpfads. |
+| `Assets/Materials/RunnerStatsCanvas.prefab` | Wiederverwendbare Statistik-/Steuerungsoberfläche. |
+| `Assets/Materials/planeAR.prefab` | Ressource zur Darstellung erkannter Flächen. |
+| `Assets/HeartRateBLE/HeartRateCanvas.prefab` | Sensoroberfläche. |
+| `Assets/Anim/Controller.controller` | Animator-Ressource für die Avataranimation. |
+
+Importierte Beispielskripte gehören zu den jeweiligen Paketen und bilden nicht die zentrale Projektarchitektur:
+
+- **Android BLE Sample:** `ExampleBleInteractor.cs` und `DeviceRowView.cs` demonstrieren BLE-Bedienung und Geräteeinträge.
+- **XR Hands HandVisualizer:** `HandVisualizer.cs` und `HandProcessor.cs` dienen der Handvisualisierung/-verarbeitung im Sample.
+- **Magic Leap Sample:** `MagicLeapController.cs` gehört zum importierten Rig-/OpenXR-Beispiel.
+- **TextMesh Pro Examples & Extras:** Demonstrationen für Texte, Interaktionen, Animationen und Benchmarks, etwa `TMP_TextSelector_A/B`, `VertexShakeA/B`, `WarpTextExample` und `Benchmark01–04`. Diese sind Beispielcode, keine eigene Lauftrainingslogik.
+
+## 10. Tests und Hilfsprogramme
+
+Die Dateien unter `Tests/StadionTracking` haben jeweils einen eigenen `Main()`-Einstiegspunkt und prüfen Unity-unabhängige Logik. Sie sind keine automatisch entdeckten Unity-Test-Runner-Tests. Für ihre Ausführung müssen die jeweils benötigten C#-Quelldateien gemeinsam kompiliert werden; nicht alle `Main()`-Dateien ohne Auswahl eines Einstiegspunkts zusammenbauen.
+
+| Datei | Prüfthema |
+| --- | --- |
+| `GeometryChecks.cs` | Bahnlängen, Übergänge, Projektion, Kartenbezug und Lauf-Fortschritt |
+| `FloorMarkerPlacementChecks.cs` | Bodenprojektion, Strahlschnitt und zeitliche Scanverwendbarkeit |
+| `StadiumCalibrationChecks.cs` | Zwei-Punkt-Ausrichtung und Rundenübergänge |
+| `LocomotionChecks.cs` | Gangarten-/Animationsberechnung |
+| `GhostTestMotionChecks.cs` | Separates Ghost-Testtempo, Tempoänderungen und Pause |
+| `MeasuredRecordsChecks.cs` | Tatsächlich gemessene Rekorde und Abgrenzung zu Vorgaben |
+| `RunnerSpeedInputChecks.cs` | Geschwindigkeitsquellen, Messwertvalidierung und Signalalter |
+
+`Tools/generate_simple_track.py` liest Konstanten aus `StadiumTrackGeometry.cs` und `SimpleTrackMap.cs` und erzeugt mit Python/Pillow `Assets/Scripts/StadionTracking/Resources/SimpleTrack.png`. Dadurch beruhen Karte und Laufbahn auf denselben Abmessungen.
+
+## 11. Speicherung und Lebensdauer der Daten
+
+| Daten | Ort und Lebensdauer |
+| --- | --- |
+| Serveradresse im Build | `Assets/Resources/RunnerServer.json` |
+| Optionale Serverüberschreibung | `Application.persistentDataPath/runner-server.json` auf dem Gerät |
+| Pace/Modus und Menüübergabe | Statische `RunnerSessionSettings` im laufenden Prozess |
+| Zeit, Distanz, Rekorde, Ghost-Samples | Laufzeitobjekte der aktuellen Unity-Session; kein dauerhafter Bestzeit-Speicher |
+| AR-Platzierung | Aktuelle XR-Session; kein dauerhafter räumlicher Anker über Neustarts |
+| BLE-Profile | ScriptableObject-Assets im Projekt |
+| Dashboard-Entwurf | Laut vorhandener Serverdokumentation lokal im Browser; getrennt von der angewendeten Unity-Konfiguration |
+| Serveraufzeichnungen | Laut vorhandener Serverdokumentation `RunningServer/recordings/<ID>/` mit `ble_data.csv`, `exercise_detections.csv`, `commands.jsonl`, `session_meta.json` |
+
+Server-Session, Serveraufnahme und Unity-Lauf sind getrennte Abläufe. Eine gestartete Serveraufnahme startet den Lauf nicht automatisch. Es gibt laut bestehender Dokumentation noch keinen eigenen Serverexport für Laufbahnpositionen oder Rekordzeiten.
+
+## 12. Aktueller Stand und Grenzen
+
+- Die reale Laufband-Hardwareanbindung ist vorbereitet, aber noch nicht implementiert. Ohne gültige Messwerte liefert diese Quelle 0 km/h. Die App steuert keinen Laufbandmotor.
+- Die vorhandene README bezeichnet `Build/MarkerFloorFix.apk` als zuletzt erfolgreich auf dem Gerät geprüften Build. Die anschließend ergänzte Nutzer-Geschwindigkeitswahl und unabhängige Pace-Logik benötigen danach einen neuen Geräte-Build. Diese Dokumentation hat den installierten Gerätestand nicht neu geprüft.
+- Eine vollständige reale 400-m-Session und echte Laufbanddaten sind laut vorhandener Dokumentation noch nicht durch einen vollständigen Geräte-Lauf verifiziert.
+- Eine erkannte lokale Bodenfläche vermisst nicht automatisch das gesamte reale Stadion. Zwei Kalibrierpunkte passen ein Standardoval an, keine beliebige Bahnform.
+- Ältere Menü-, Höhen- und Vorschaupfade bleiben enthalten. Für den aktuellen Ablauf sind Dashboard, Marker-/Plane-Platzierung und `StraightTreadmillWorld` maßgeblich.
+- Das native BLE-JAR hängt an Details des verwendeten Velorexe-Plugins; ein Paketupdate benötigt erneute Prüfung.
+
+## 13. Orientierung für Änderungen
+
+| Gewünschte Änderung | Zuerst ansehen |
+| --- | --- |
+| Marker wird erkannt, Welt erscheint nicht | `MarkerAndAnchorTracker.cs`, `FloorMarkerPlacement.cs`, Platzierungsstatus |
+| Bahnposition, Weltbewegung oder Stadionfortschritt | `StraightTreadmillWorld.cs`, `StadiumCalibration.cs` |
+| Bahnform, Bahnbreiten oder Positionsberechnung | `StadiumTrackGeometry.cs`; passende Mesh-/Kartenerzeugung berücksichtigen |
+| Nutzer-Testtempo oder Laufbandsignal | `RunnerSpeedInput.cs`, Geschwindigkeits-API der Welt |
+| SideBySide-Position und Animation | `TreadmillCompanion.cs`, `LocomotionTiming.cs` |
+| Ghost-Pace, Profilwiedergabe oder Testtempo | `LapGhostPlayback.cs`, `LapGhostRecording.cs`, `GhostTestMotion.cs` |
+| Rekorde, Zwischenzeiten oder Uhr | `LapCheckpointTracker.cs`, `ActiveStatsDisplay.cs` |
+| Fernsteuerungsbefehl oder Telemetrie | `RunnerServerClient.cs`, `Docs/RunningServer.md`, zusätzlich separates Serverprojekt |
+| HUD-Gestaltung | `RunnerUiTheme.cs`, `RunnerArPanel.cs`, `RunnerGlassGraphic.cs`, HUD-Prefab |
+| Hand-Ray oder Pinch | `Gestures.cs`, Input-Action-Assets und XR-Interactor der Szene |
+| BLE-Gerätefilter oder Datenkanäle | `BleDeviceProfile.cs` und das zugewiesene Profil-Asset |
+| Neues Sensordatenformat | `SensorMeasurements.cs`, Parser im BLE-Paket |
+| Android-Geräte-Build | Build Settings, Android-/XR-Einstellungen, `TreadmillDeviceBuild.cs` |
+
+Weitere Anleitungen: [README.md](README.md), [RunningServer-Protokoll](Docs/RunningServer.md), [BLE-Paket](Packages/com.kaan.ble-sensors/README.md) und [UI-Styleguide](Assets/UI/STYLE_GUIDE_IMPLEMENTATION.md).
