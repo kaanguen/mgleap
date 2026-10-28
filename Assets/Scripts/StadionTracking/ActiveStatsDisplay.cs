@@ -4,6 +4,7 @@ using UnityEngine;
 
 namespace StadionTracking
 {
+    [DefaultExecutionOrder(200)]
     public sealed class ActiveStatsDisplay : MonoBehaviour
     {
         [SerializeField] private Canvas statsCanvas;
@@ -12,41 +13,22 @@ namespace StadionTracking
         [SerializeField] private TMP_Text distanceReadout;
         [SerializeField] private TMP_Text paceReadout;
         [SerializeField] private TMP_Text checkpointReadout;
-        private TMP_Text partnerReadout;
+        private TMP_Text partnerReadout, trackingReadout;
         [SerializeField] private Camera headCamera;
         [SerializeField] private StraightTreadmillWorld treadmillWorld;
-        [SerializeField, Range(0f, 0.25f)] private float horizontalMargin = 0.12f;
-        [SerializeField, Range(0f, 0.3f)] private float verticalMargin = 0.22f;
-        [SerializeField, Range(0f, 0.2f)] private float safeViewportMargin = 0.06f;
-        [SerializeField, Min(0.3f)] private float distanceFromHead = 1.8f;
-        [SerializeField, Min(0.0001f)] private float worldScale = 0.0003f;
         [SerializeField, Min(0.05f)] private float refreshInterval = 0.15f;
 
-        private StadiumTrackPreview runner;
-        private StadiumTrackPreview timedRunner;
-        private StraightTreadmillWorld timedTreadmillWorld;
-        private float elapsedSeconds;
         private float nextRefresh;
-        private bool sessionStarted;
-        private double previousDistance;
-        private LapGhostPlayback ghostPlayback;
-        private LapCheckpointTracker checkpointTracker = new LapCheckpointTracker(400.0, RunnerSessionSettings.PaceSeconds);
+        private RunnerSession session;
+        private RunnerSession Session => session != null ? session : (session = RunnerSession.GetOrCreate(this));
 
-        public float ElapsedSeconds => elapsedSeconds;
-        public double? Recorded100mSeconds => checkpointTracker.Recorded100mSeconds;
-        public double? RecordedLapSeconds => checkpointTracker.RecordedLapSeconds;
-        public double? Recorded1KmSeconds => checkpointTracker.Recorded1KmSeconds;
+        public float ElapsedSeconds => Session.ElapsedSeconds;
+        public double? Recorded100mSeconds => Session.Checkpoints.Recorded100mSeconds;
+        public double? RecordedLapSeconds => Session.Checkpoints.RecordedLapSeconds;
+        public double? Recorded1KmSeconds => Session.Checkpoints.Recorded1KmSeconds;
 
-        public void ResetSessionStats()
-        {
-            elapsedSeconds = 0;
-            if (ghostPlayback != null) ghostPlayback.ResetTestPosition();
-            previousDistance = 0;
-            sessionStarted = false;
-            checkpointTracker = new LapCheckpointTracker(400.0, RunnerSessionSettings.PaceSeconds);
-            checkpointTracker.Update(0, 0);
-            nextRefresh = 0;
-        }
+        public void RefreshTargetPace() { Session.RefreshTargetPace(); nextRefresh = 0; }
+        public void ResetSessionStats() { Session.ResetSessionStats(); nextRefresh = 0; }
 
         private void Awake()
         {
@@ -56,8 +38,9 @@ namespace StadionTracking
                 statsReadout = GetComponentInChildren<TMP_Text>(true);
             EnsureCheckpointReadout();
             EnsurePartnerReadout();
-            ghostPlayback = GetComponent<LapGhostPlayback>();
-            if (ghostPlayback == null) ghostPlayback = gameObject.AddComponent<LapGhostPlayback>();
+            EnsureTrackingReadout();
+            session = RunnerSession.GetOrCreate(this);
+            if (treadmillWorld != null) session.BindWorld(treadmillWorld);
 
             if (statsCanvas == null || (statsReadout == null && timerReadout == null))
             {
@@ -69,19 +52,8 @@ namespace StadionTracking
 
         public void BindRunner(StadiumTrackPreview activeRunner)
         {
-            if (runner == activeRunner)
-                return;
-
-            runner = activeRunner;
-            timedRunner = activeRunner;
-            treadmillWorld = null;
-            timedTreadmillWorld = null;
-            elapsedSeconds = 0f;
-            checkpointTracker = new LapCheckpointTracker(activeRunner.LapLengthMetres, RunnerSessionSettings.PaceSeconds);
-            checkpointTracker.Update(0, 0);
-            sessionStarted = false;
-            previousDistance = 0;
-            nextRefresh = 0f;
+            Session.BindRunner(activeRunner);
+            nextRefresh = 0;
         }
 
         private void LateUpdate()
@@ -93,67 +65,18 @@ namespace StadionTracking
 
             statsCanvas.worldCamera = headCamera;
 
-            if (runner == null || !runner.isActiveAndEnabled)
-                runner = FindObjectOfType<StadiumTrackPreview>();
-            if (treadmillWorld == null || !treadmillWorld.isActiveAndEnabled)
-                treadmillWorld = FindObjectOfType<StraightTreadmillWorld>();
-
-            StadiumTrackPreview activeRunner = runner != null && runner.isActiveAndEnabled ? runner : null;
-            StraightTreadmillWorld activeTreadmillWorld = activeRunner == null &&
-                treadmillWorld != null && treadmillWorld.isActiveAndEnabled ? treadmillWorld : null;
-
-            if (activeRunner != timedRunner || activeTreadmillWorld != timedTreadmillWorld)
-            {
-                timedRunner = activeRunner;
-                timedTreadmillWorld = activeTreadmillWorld;
-                elapsedSeconds = 0f;
-                checkpointTracker = new LapCheckpointTracker(
-                    activeRunner != null ? activeRunner.LapLengthMetres : 400.0,
-                    RunnerSessionSettings.PaceSeconds);
-                checkpointTracker.Update(0, 0);
-                sessionStarted = false;
-                previousDistance = 0;
-            }
-
-            double speedMetresPerSecond = activeRunner != null
-                ? activeRunner.CurrentSpeed
-                : activeTreadmillWorld != null && activeTreadmillWorld.PlacementReady
-                    ? activeTreadmillWorld.SpeedMetresPerSecond
-                    : 0.0;
-            long completedLaps = activeRunner != null
-                ? activeRunner.CompletedLaps
-                : activeTreadmillWorld != null ? activeTreadmillWorld.CompletedLaps : 0;
-            double travelledMetres = activeRunner != null
-                ? activeRunner.TravelledMetres
-                : activeTreadmillWorld != null ? activeTreadmillWorld.TravelledMetres : 0.0;
-
-            if (travelledMetres < previousDistance)
-            {
-                elapsedSeconds = 0;
-                sessionStarted = false;
-                checkpointTracker.Update(travelledMetres, 0);
-            }
-            previousDistance = travelledMetres;
-            bool ready = activeRunner != null || (activeTreadmillWorld != null &&
-                activeTreadmillWorld.PlacementReady && activeTreadmillWorld.HeightConfirmed);
-            bool explicitlyPaused = activeRunner != null
-                ? activeRunner.RequestedSpeedFraction <= 0f
-                : activeTreadmillWorld != null && activeTreadmillWorld.SessionPaused;
-            // Explicit session start advances the common race/ghost clock even when the user's belt speed is zero.
-            if (ready && !explicitlyPaused) sessionStarted = true;
-            bool clockRunning = ready && sessionStarted && !explicitlyPaused && Time.timeScale > 0;
-            // A belt speed of zero counts as time lost; the explicit Pause button freezes the race.
-            // Match the scaled clock used by both movement simulations.
-            if (clockRunning) elapsedSeconds += Time.deltaTime;
-
-            if (activeRunner != null || activeTreadmillWorld != null)
-                checkpointTracker.Update(travelledMetres, elapsedSeconds);
-            ghostPlayback.Synchronize(checkpointTracker, activeRunner, activeTreadmillWorld, clockRunning);
+            var activeSession = Session;
+            var activeRunner = activeSession.Runner;
+            var activeTreadmillWorld = activeSession.World;
+            var checkpointTracker = activeSession.Checkpoints;
+            var ghostPlayback = activeSession.GhostPlayback;
+            double travelledMetres = activeSession.TravelledMetres;
+            double speedMetresPerSecond = activeSession.SpeedMetresPerSecond;
 
             if (Time.unscaledTime < nextRefresh)
                 return;
 
-            string timeValue = FormatElapsedTime(elapsedSeconds);
+            string timeValue = FormatElapsedTime(activeSession.ElapsedSeconds);
             string distanceValue = (travelledMetres / 1000.0).ToString("F2", CultureInfo.GetCultureInfo("de-DE"));
             string paceValue = FormatPace(speedMetresPerSecond);
             if (timerReadout != null)
@@ -163,12 +86,9 @@ namespace StadionTracking
                 paceReadout.text = "<mspace=16>" + paceValue + "</mspace>";
             }
             else if (statsReadout != null) statsReadout.text = activeRunner == null && activeTreadmillWorld == null
-                ? FormatStats("--:--", "--", "--:--", "--,--")
+                ? FormatStats("--:--", "--:--", "--,--")
                 : FormatStats(
-                    FormatPace(speedMetresPerSecond),
-                    completedLaps.ToString(),
-                    FormatElapsedTime(elapsedSeconds),
-                    (travelledMetres / 1000.0).ToString("F2", CultureInfo.GetCultureInfo("de-DE")));
+                    paceValue, timeValue, distanceValue);
             if (checkpointReadout != null)
                 checkpointReadout.text = activeRunner == null && activeTreadmillWorld == null
                     ? "CHECKPOINT --"
@@ -182,7 +102,23 @@ namespace StadionTracking
                     ? $"BESTE RUNDE {FormatSplitTime(checkpointTracker.BestLapSeconds)}"
                     : $"ZIELPACE {RunnerSessionSettings.PaceSeconds / 60}:{RunnerSessionSettings.PaceSeconds % 60:00} min/km";
             }
+            if (trackingReadout != null)
+            {
+                trackingReadout.text = activeSession.TrackingDescription;
+                trackingReadout.color = activeSession.TrackingState == RunnerTrackingState.TrackingLost
+                    ? RunnerUiTheme.Warning : RunnerUiTheme.Label;
+            }
             nextRefresh = Time.unscaledTime + refreshInterval;
+        }
+
+        private void EnsureTrackingReadout()
+        {
+            if (statsCanvas == null) return;
+            trackingReadout = RunnerUiTheme.Text("TrackingStatus", statsCanvas.transform, "", 20, 292, 260, 40, 13);
+            var rect = (RectTransform)statsCanvas.transform;
+            rect.sizeDelta = new Vector2(rect.sizeDelta.x, Mathf.Max(396, rect.sizeDelta.y));
+            MoveHudButton(statsCanvas.transform, "PauseSession", 342);
+            MoveHudButton(statsCanvas.transform, "BackToMenu", 342);
         }
 
         private void EnsurePartnerReadout()
@@ -291,7 +227,7 @@ namespace StadionTracking
             return $"{totalTenths / 600:00}:{totalTenths / 10 % 60:00}.{totalTenths % 10}";
         }
 
-        private static string FormatStats(string pace, string laps, string time, string distanceKm)
+        private static string FormatStats(string pace, string time, string distanceKm)
         {
             return "<size=13><color=#E3DEF7>LAUFSESSION\nZEIT</color></size>\n" +
                 $"<size=56><color=#67E8F9><b>{time}</b></color></size>\n" +

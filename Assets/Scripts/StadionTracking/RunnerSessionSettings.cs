@@ -1,5 +1,3 @@
-using UnityEngine;
-
 namespace StadionTracking
 {
     public static class RunnerSessionSettings

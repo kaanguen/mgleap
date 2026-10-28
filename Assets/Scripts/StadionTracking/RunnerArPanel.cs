@@ -15,7 +15,7 @@ namespace StadionTracking
         private CanvasGroup group;
         private static readonly List<RunnerArPanel> Active = new List<RunnerArPanel>();
         // The setup menu is centered; in-session panels keep the track view clear.
-        public bool IsCentered => GetComponent<RunnerMainMenu>() != null;
+        public bool IsCentered => GetComponent<RunnerMainMenu>() != null || GetComponent<RunnerServerSetup>() != null;
         public bool IsRunningHud => GetComponent<ActiveStatsDisplay>() != null;
         public int Priority { get => priority; set => priority = value; }
 

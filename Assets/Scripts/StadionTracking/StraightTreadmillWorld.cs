@@ -32,6 +32,7 @@ namespace StadionTracking
         public bool MarkerFloorConfirmed { get; private set; }
         public int MarkerPlacementRevision { get; private set; }
         private Vector3 markerFloorPoint, markerFloorNormal = Vector3.up, markerForward = Vector3.forward;
+        private Vector3 markerAnchorPosition;
         public void BeginMarkerPlacement()
         {
             requireMarkerPlacement = true;
@@ -47,12 +48,10 @@ namespace StadionTracking
             forward = Vector3.ProjectOnPlane(forward, normal);
             if (forward.sqrMagnitude < .001f) return false;
             markerFloorPoint = position; markerFloorNormal = normal.normalized; markerForward = forward.normalized;
+            markerAnchorPosition = position;
             MarkerFloorConfirmed = true;
-            startPosition = calibrationPosition = position;
-            startRotation = calibrationRotation = Quaternion.LookRotation(markerForward, markerFloorNormal);
+            RestoreMarkerAnchor();
             heightConfirmed = placementReady = hasCalibrationReference = true;
-            surfaceHeight = position.y;
-            CalibrationOffsets = Vector3.zero;
             if (RealTrackMode)
             {
                 trackPointA = position; TrackPointASet = RealTrackCalibrated = true;
@@ -61,8 +60,38 @@ namespace StadionTracking
             ApplyCurrentPose(); SetTrackVisible(true);
             return true;
         }
-        private float DetectedFloorHeightAt(Vector3 point) => markerFloorPoint.y -
-            (markerFloorNormal.x * (point.x - markerFloorPoint.x) + markerFloorNormal.z * (point.z - markerFloorPoint.z)) / markerFloorNormal.y;
+        private float DetectedFloorHeightAt(Vector3 point) =>
+            FloorPlaneGeometry.HeightAtXZ(point, markerFloorPoint, markerFloorNormal);
+
+        private void RestoreMarkerAnchor()
+        {
+            markerAnchorPosition.y = DetectedFloorHeightAt(markerAnchorPosition);
+            startPosition = calibrationPosition = markerAnchorPosition;
+            startRotation = calibrationRotation = Quaternion.LookRotation(
+                Vector3.ProjectOnPlane(markerForward, markerFloorNormal), markerFloorNormal);
+            surfaceHeight = startPosition.y;
+            hasCalibrationReference = true;
+            CalibrationOffsets = Vector3.zero;
+        }
+
+        // Refined floor tracking must also move the already placed track, without resetting the run.
+        public void UpdateMarkerFloorPlane(Vector3 point, Vector3 normal)
+        {
+            if (!requireMarkerPlacement || !MarkerFloorConfirmed || normal.y < .9659f) return;
+            markerFloorPoint = point;
+            markerFloorNormal = normal.normalized;
+            markerAnchorPosition.y = DetectedFloorHeightAt(markerAnchorPosition);
+            startPosition.y = DetectedFloorHeightAt(startPosition);
+            calibrationPosition.y = DetectedFloorHeightAt(calibrationPosition);
+            startRotation = Quaternion.LookRotation(
+                Vector3.ProjectOnPlane(startRotation * Vector3.forward, markerFloorNormal), markerFloorNormal);
+            calibrationRotation = Quaternion.LookRotation(
+                Vector3.ProjectOnPlane(calibrationRotation * Vector3.forward, markerFloorNormal), markerFloorNormal);
+            if (TrackPointASet) trackPointA.y = DetectedFloorHeightAt(trackPointA);
+            surfaceHeight = startPosition.y;
+            ApplyCurrentPose();
+            RebasePhysicalProgressAfterPlacement();
+        }
 
         [Header("Placement")]
         [SerializeField] private Camera headCamera;
@@ -96,13 +125,14 @@ namespace StadionTracking
         public int AvatarLane { get; private set; } = StartAvatarLane;
         private Vector3 trackPointA;
         private double previousPhysicalPhase, signedPhysicalDistance;
+        private Vector3 previousPhysicalHeadPosition;
         private bool physicalPhaseReady, raceOriginReady;
         public double RaceStartTrackMetres { get; private set; }
         private float physicalSpeed;
         public double UserTrackPositionMetres { get; private set; }
         public void SetAvatarLane(int lane)
         {
-            if (lane < 1 || lane > 8) throw new ArgumentOutOfRangeException(nameof(lane));
+            if (lane < 1 || lane > StadiumTrackGeometry.LaneCount) throw new ArgumentOutOfRangeException(nameof(lane));
             AvatarLane = lane;
         }
         public void SetTrackEnvironment(bool realTrack)
@@ -120,7 +150,7 @@ namespace StadionTracking
             if (requireMarkerPlacement)
             {
                 if (realTrack) followOval400m = true;
-                if (MarkerFloorConfirmed) PlaceFromMarkerPlane(markerFloorPoint, markerForward, markerFloorNormal);
+                if (MarkerFloorConfirmed) PlaceFromMarkerPlane(markerAnchorPosition, markerForward, markerFloorNormal);
                 else { placementReady = false; SetTrackVisible(false); }
                 return;
             }
@@ -172,12 +202,18 @@ namespace StadionTracking
                 position = startPosition + startRotation * new Vector3((float)(oval.Radius(lane) - oval.Radius(1)), 0, (float)(distance - travelledMetres));
                 rotation = startRotation; return;
             }
-            var sample = oval.EvaluateAlignedLane(lane, TrackStartMetres + (RealTrackMode ? RaceStartTrackMetres : 0) + distance);
-            position = transform.TransformPoint(new Vector3((float)sample.X, 0, (float)sample.Z));
-            rotation = Quaternion.LookRotation(transform.TransformDirection(new Vector3((float)sample.DirectionX, 0, (float)sample.DirectionZ)), Vector3.up);
+            var sample = oval.EvaluateAlignedLane(lane, GetTrackDistance(distance));
+            GetWorldPose(sample, out position, out rotation);
         }
+        // User/ghost progress shares the same race-origin and start-line conversion.
+        public double UserDistanceAlongTrack => RealTrackMode
+            ? UserTrackPositionMetres - RaceStartTrackMetres : TravelledMetres;
+
+        public double GetTrackDistance(double distance) =>
+            TrackStartMetres + (RealTrackMode ? RaceStartTrackMetres : 0) + distance;
+
         public double AvatarLaneSpeedScale(double distance) => followOval400m
-            ? oval.LaneSpeedScale(AvatarLane, TrackStartMetres + (RealTrackMode ? RaceStartTrackMetres : 0) + distance) : 1;
+            ? oval.LaneSpeedScale(AvatarLane, GetTrackDistance(distance)) : 1;
         public Vector3 CalibrationOffsets { get; private set; }
         public float SurfaceHeight => surfaceHeight;
 
@@ -190,19 +226,19 @@ namespace StadionTracking
         public bool RecalibratePlacement(bool includeHeight)
         {
             if (RealTrackMode) throw new InvalidOperationException("Use stadium points A/B to recalibrate the fixed track.");
-            if (!HeadPoseReady || !HeightConfirmed) return false;
-            var forward = Vector3.ProjectOnPlane(HeadCamera.transform.forward, Vector3.up);
-            if (forward.sqrMagnitude < .001f) return false;
-            double distance = travelledMetres, offset = tileOffset;
+            if (!HeightConfirmed) return false;
             if (requireMarkerPlacement)
             {
                 if (!MarkerFloorConfirmed) return false;
-                Vector3 head = HeadCamera.transform.position;
-                startPosition = new Vector3(head.x, DetectedFloorHeightAt(head), head.z);
-                startRotation = Quaternion.LookRotation(Vector3.ProjectOnPlane(forward, markerFloorNormal), markerFloorNormal);
-                surfaceHeight = startPosition.y;
+                RestoreMarkerAnchor();
+                ApplyCurrentPose();
+                return true;
             }
-            else if (includeHeight)
+            if (!HeadPoseReady) return false;
+            var forward = Vector3.ProjectOnPlane(HeadCamera.transform.forward, Vector3.up);
+            if (forward.sqrMagnitude < .001f) return false;
+            double distance = travelledMetres, offset = tileOffset;
+            if (includeHeight)
             {
                 if (!CalibrateFromEyeHeight((bodyHeightCm - headTopToEyeCm) / 100f)) return false;
             }
@@ -294,6 +330,20 @@ namespace StadionTracking
             }
         }
 
+        private RunnerSession session;
+
+        private void OnEnable()
+        {
+            if (!Application.isPlaying) return;
+            session = RunnerSession.GetOrCreate(this);
+            session.BindWorld(this);
+        }
+
+        private void OnDisable()
+        {
+            if (session != null) session.UnbindWorld(this);
+        }
+
         private void Start()
         {
             if (headCamera == null) headCamera = Camera.main;
@@ -340,11 +390,8 @@ namespace StadionTracking
             if (!HeightConfirmed) return;
             if (!placementReady)
             {
-                if (headCamera == null) return;
-                // On the headset, don't anchor to the placeholder camera pose before tracking starts.
-                if (XRSettings.isDeviceActive &&
-                    (!InputDevices.GetDeviceAtXRNode(XRNode.Head).TryGetFeatureValue(CommonUsages.isTracked, out bool tracked)
-                     || !tracked)) return;
+                // Don't anchor to a placeholder pose before tracking starts.
+                if (!HeadPoseReady) return;
                 AlignToCurrentView();
             }
             AdvanceSimulation(Time.deltaTime);
@@ -389,6 +436,11 @@ namespace StadionTracking
                 return;
             }
             var sample = oval.Evaluate(1, (ovalStartMetres + travelledMetres % 400.0 + metresAhead) * oval.Length(1) / 400.0);
+            GetWorldPose(sample, out position, out rotation);
+        }
+
+        private void GetWorldPose(StadiumTrackGeometry.Sample sample, out Vector3 position, out Quaternion rotation)
+        {
             position = transform.TransformPoint(new Vector3((float)sample.X, 0, (float)sample.Z));
             Vector3 tangent = transform.TransformDirection(new Vector3((float)sample.DirectionX, 0, (float)sample.DirectionZ));
             rotation = Quaternion.LookRotation(tangent, Vector3.up);
@@ -407,28 +459,24 @@ namespace StadionTracking
 
             double distance = (double)SpeedKmh / 3.6 * elapsedSeconds;
             travelledMetres += distance;
-            if (followOval400m)
-            {
-                ApplyOvalPose();
-                return;
-            }
-            tileOffset = (tileOffset + distance) % Math.Max(1.0, tileLengthMetres);
-            transform.SetPositionAndRotation(startPosition + startRotation * Vector3.back * (float)tileOffset,
-                startRotation);
+            if (!followOval400m)
+                tileOffset = (tileOffset + distance) % Math.Max(1.0, tileLengthMetres);
+            ApplyCurrentPose();
         }
 
         private void UpdatePhysicalProgress(float seconds)
         {
             physicalSpeed = 0;
-            if (!RealTrackCalibrated || !HeadPoseReady || seconds <= 0 || float.IsNaN(seconds) || float.IsInfinity(seconds)) return;
-            Vector3 local = transform.InverseTransformPoint(HeadCamera.transform.position);
-            double phase = oval.Project(1, local.x, local.z) * 400 / oval.Length(1);
-            if (double.IsNaN(phase) || double.IsInfinity(phase)) return;
+            if (!HeadPoseReady) { physicalPhaseReady = false; return; }
+            if (!RealTrackCalibrated || seconds <= 0 || float.IsNaN(seconds) || float.IsInfinity(seconds)) return;
+            Vector3 headPosition = HeadCamera.transform.position;
+            if (!TryGetPhysicalPhase(headPosition, out double phase)) return;
             UserTrackPositionMetres = phase;
             if (!SessionPaused && !raceOriginReady)
             { RaceStartTrackMetres = phase; raceOriginReady = true; physicalPhaseReady = false; }
             double delta = physicalPhaseReady ? StadiumCalibration.WrappedDelta(previousPhysicalPhase, phase) : 0;
             previousPhysicalPhase = phase; physicalPhaseReady = true;
+            previousPhysicalHeadPosition = headPosition;
             if (SessionPaused || Math.Abs(delta) > 5) return; // Ignore tracking/relocalization jumps.
             signedPhysicalDistance += delta;
             double before = travelledMetres;
@@ -436,9 +484,39 @@ namespace StadionTracking
             physicalSpeed = (float)((travelledMetres - before) / seconds);
         }
 
+        private bool TryGetPhysicalPhase(Vector3 headPosition, out double phase)
+        {
+            Vector3 local = transform.InverseTransformPoint(headPosition);
+            phase = oval.Project(1, local.x, local.z) * 400 / oval.Length(1);
+            return !double.IsNaN(phase) && !double.IsInfinity(phase);
+        }
+
+        private void RebasePhysicalProgressAfterPlacement()
+        {
+            if (!RealTrackMode || !physicalPhaseReady) return;
+            if (!TryGetPhysicalPhase(previousPhysicalHeadPosition, out double rebasedPhase))
+            {
+                physicalPhaseReady = false;
+                return;
+            }
+            // Compare the next real head movement in the corrected frame. Do not skip a sample:
+            // continuous plane refinement must not suppress real walking on every frame.
+            double correction = StadiumCalibration.WrappedDelta(previousPhysicalPhase, rebasedPhase);
+            if (raceOriginReady) RaceStartTrackMetres += correction;
+            previousPhysicalPhase = rebasedPhase;
+            UserTrackPositionMetres = rebasedPhase;
+        }
+
         [ContextMenu("Align track to current view and reset distance")]
         public void AlignToCurrentView()
         {
+            if (requireMarkerPlacement)
+            {
+                if (!MarkerFloorConfirmed) return;
+                RestoreMarkerAnchor();
+                ResetDistance();
+                return;
+            }
             if (!HeightConfirmed) return;
             if (headCamera == null) headCamera = Camera.main;
             if (headCamera == null) return;
@@ -507,6 +585,8 @@ namespace StadionTracking
 
         public void AdjustSurfaceHeight(float deltaMetres)
         {
+            if (requireMarkerPlacement)
+                throw new InvalidOperationException("Track height follows the detected marker floor. Rescan the marker to place it again.");
             if (!HeightConfirmed || float.IsNaN(deltaMetres) || float.IsInfinity(deltaMetres)) return;
             surfaceHeight += deltaMetres;
             if (hasCalibrationReference) calibrationPosition += Vector3.up * deltaMetres;

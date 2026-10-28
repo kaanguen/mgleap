@@ -132,10 +132,9 @@ internal static class LapGhostChecks
             Check(animator != null && !animator.applyRootMotion && animator.GetBool("isRunning"),
                 "ghost animation follows its own speed without root motion");
             Check(avatar.GetComponentsInChildren<Collider>(true).All(c => !c.enabled), "no ghost collisions");
-            Check(avatar.GetComponentsInChildren<Renderer>().All(r =>
-                !r.enabled || r.sharedMaterial.shader.name == "StadionTracking/LapGhost"), "cyan ghost material applied");
-            Check(!ShaderUtil.GetShaderMessages(Resources.Load<Shader>("LapGhost"))
-                .Any(m => m.severity.ToString() == "Error"), "ghost shader has no compilation errors");
+            Check(avatar.GetComponentsInChildren<Renderer>(true).SelectMany(r => r.sharedMaterials)
+                .SequenceEqual(sideAvatar.GetComponentsInChildren<Renderer>(true).SelectMany(r => r.sharedMaterials)),
+                "ghost uses the same normal materials as the side-by-side companion");
 
             world.SpeedKmh = 0;
             tracker.Update(world.TravelledMetres, 20);

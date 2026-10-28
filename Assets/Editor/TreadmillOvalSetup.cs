@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using StadionTracking;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -58,31 +57,22 @@ internal static class TreadmillOvalSetup
     {
         const int steps = 1024;
         var geometry = new StadiumTrackGeometry();
-        var vertices = new List<Vector3>();
-        var colors = new List<Color>();
-        var triangles = new List<int>();
+        var builder = new TrackMeshBuilder();
         Vector3 Edge(double metres, float offset, float y)
         {
             var p = geometry.Evaluate(1, metres);
             return new Vector3((float)p.X + (float)p.DirectionZ * offset, y,
                 (float)p.Z - (float)p.DirectionX * offset);
         }
-        void Quad(Vector3 a, Vector3 b, Vector3 c, Vector3 d, Color color)
-        {
-            int n = vertices.Count;
-            vertices.Add(a); vertices.Add(b); vertices.Add(c); vertices.Add(d);
-            for (int i = 0; i < 4; i++) colors.Add(color);
-            triangles.AddRange(new[] { n, n + 1, n + 2, n, n + 2, n + 3 });
-        }
         void Strip(double s0, double s1, float inner, float outer, float y, Color color) =>
-            Quad(Edge(s0, inner, y), Edge(s1, inner, y), Edge(s1, outer, y), Edge(s0, outer, y), color);
+            builder.AddQuad(Edge(s0, inner, y), Edge(s1, inner, y), Edge(s1, outer, y), Edge(s0, outer, y), color);
 
         double length = geometry.Length(1);
         float width = (float)(StadiumTrackGeometry.LaneWidth * StadiumTrackGeometry.LaneCount);
         for (int i = 0; i < steps; i++)
         {
             double s0 = i * length / steps, s1 = (i + 1) * length / steps;
-            Strip(s0, s1, -0.3f, width - 0.3f, 0f, new Color(0.55f, 0.12f, 0.07f));
+            // Leave the real floor visible between the lane markings.
             for (int lane = 0; lane <= StadiumTrackGeometry.LaneCount; lane++)
             {
                 float offset = (float)(lane * StadiumTrackGeometry.LaneWidth) - 0.3f;
@@ -98,10 +88,7 @@ internal static class TreadmillOvalSetup
         }
         double start = 390.0 * length / 400.0;
         Strip(start, start + 0.12, -0.3f, width - 0.3f, 0.01f, Color.white);
-        var mesh = new Mesh { name = "400m oval - 8 lanes" };
-        mesh.SetVertices(vertices); mesh.SetColors(colors); mesh.SetTriangles(triangles, 0);
-        mesh.RecalculateNormals(); mesh.RecalculateBounds();
-        return mesh;
+        return builder.CreateMesh("400m oval - 8 lanes");
     }
 
     [MenuItem("Tools/Treadmill/Verify 400m oval motion")]

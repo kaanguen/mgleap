@@ -3,10 +3,8 @@ using UnityEngine.Rendering;
 
 namespace StadionTracking
 {
-
     public sealed class StadiumTrackPreview : MonoBehaviour
     {
-
         private readonly StadiumTrackGeometry _geometry = new StadiumTrackGeometry();
         private StadiumRunProgress _run = new StadiumRunProgress();
         private float _animationSpeedFraction;
@@ -62,17 +60,25 @@ namespace StadionTracking
         private LineRenderer _route;
         private LineRenderer _arrow;
         private Animator _animator;
-        private bool _hasRunningParameter;
-        private bool _hasSpeedParameter;
-        private bool _hasPlaybackRateParameter;
-        private float _walkSpeed = 1.5f;
-        private float _runSpeed = 3f;
-        private float _sprintSpeed = 6f;
-
-        private static readonly int RunningParameter = Animator.StringToHash("isRunning");
-        private static readonly int SpeedParameter = Animator.StringToHash("speed");
-        private static readonly int PlaybackRateParameter = Animator.StringToHash("locomotionRate");
+        private AvatarLocomotion _locomotion;
         private double _entryMetres;
+
+        private RunnerSession session;
+        private bool initialized;
+
+        private void OnEnable()
+        {
+            if (Application.isPlaying && initialized)
+            {
+                session = RunnerSession.GetOrCreate(this);
+                session.BindRunner(this);
+            }
+        }
+
+        private void OnDisable()
+        {
+            if (session != null) session.UnbindRunner(this);
+        }
 
         public int Lane { get; private set; }
 
@@ -81,7 +87,6 @@ namespace StadionTracking
             Vector3 markerWorldPosition, Quaternion markerWorldRotation,
             StadiumPreviewSettings settings, out Vector3 entryGroundPosition)
         {
-
             entryGroundPosition = spawnGroundPosition;
             _settings = settings;
             PacingMode = settings.PacingMode;
@@ -95,7 +100,6 @@ namespace StadionTracking
                 markerWorldRotation * settings.MarkerLocalRunDirection, Vector3.up);
             if (worldDirection.sqrMagnitude < 0.0001f)
             {
-
                 Debug.LogWarning("[StadiumTracking] Marker heading is vertical/undefined. " +
                     "Set Marker Local Run Direction to a horizontal marker axis (floor tag: Up; wall tag: often Forward).");
                 return false;
@@ -110,7 +114,6 @@ namespace StadionTracking
             Vector3 anchor = spawnGroundPosition;
             if (settings.AnchorMode == StadiumAnchorMode.KnownMarkerPosition)
             {
-
                 anchor = new Vector3(markerWorldPosition.x, spawnGroundPosition.y, markerWorldPosition.z);
 
                 referencePoint += new Vector3(settings.MarkerOffsetFromReference.x, 0, settings.MarkerOffsetFromReference.y);
@@ -135,7 +138,6 @@ namespace StadionTracking
             entryGroundPosition = transform.TransformPoint(Position(_geometry.Evaluate(Lane, _entryMetres)));
             if (Vector3.Distance(entryGroundPosition, spawnGroundPosition) > Mathf.Max(0.1f, settings.MaxEntryCorrection))
             {
-
                 Debug.LogWarning("[StadiumTracking] Entry is too far from spawn. Check marker calibration or use AvatarSpawnPreview.");
                 return false;
             }
@@ -155,6 +157,12 @@ namespace StadionTracking
             _route = CreateLine("Lap route", material, settings.RouteColor, settings.LineWidth);
             _arrow = CreateLine("Running direction", material, settings.DirectionColor, settings.LineWidth * 1.5f);
             DrawRoute();
+            initialized = true;
+            if (Application.isPlaying && isActiveAndEnabled)
+            {
+                session = RunnerSession.GetOrCreate(this);
+                session.BindRunner(this);
+            }
             Debug.Log($"[StadiumTracking] {settings.AnchorMode}: lane {Lane}, " +
                 $"entry {_entryMetres:F2} m, lap {_geometry.Length(Lane):F3} m. " +
                 "Cyan = one full lap, yellow = running direction. Use the speed slider to start; zero pauses.");
@@ -164,7 +172,6 @@ namespace StadionTracking
         // Apply the current path heading and animation; the tracker sets the final position.
         public void AlignAvatar(Transform avatar, Animator animator, Vector3 groundPosition)
         {
-
             Vector3 position = transform.position;
             position.y = groundPosition.y;
             transform.position = position;
@@ -175,58 +182,12 @@ namespace StadionTracking
                 return;
             if (_animator != animator)
             {
-
                 _animator = animator;
-                _hasRunningParameter = _hasSpeedParameter = _hasPlaybackRateParameter = false;
-                foreach (AnimatorControllerParameter parameter in animator.parameters)
-                {
-                    _hasRunningParameter |= parameter.nameHash == RunningParameter && parameter.type == AnimatorControllerParameterType.Bool;
-                    _hasSpeedParameter |= parameter.nameHash == SpeedParameter && parameter.type == AnimatorControllerParameterType.Float;
-                    _hasPlaybackRateParameter |= parameter.nameHash == PlaybackRateParameter && parameter.type == AnimatorControllerParameterType.Float;
-                }
-                CalibrateLocomotion(animator);
+                _locomotion = new AvatarLocomotion(animator);
             }
 
             animator.applyRootMotion = false;
-            LocomotionTiming.Evaluate(_animationSpeedFraction * SpeedAtFullSlider,
-                _walkSpeed, _runSpeed, _sprintSpeed, out float blend, out float playbackRate);
-            if (_hasRunningParameter)
-                animator.SetBool(RunningParameter, _animationSpeedFraction > 0f);
-            if (_hasSpeedParameter)
-                animator.SetFloat(SpeedParameter, _hasPlaybackRateParameter ? blend : _animationSpeedFraction);
-            if (_hasPlaybackRateParameter)
-                animator.SetFloat(PlaybackRateParameter, playbackRate);
-        }
-
-        private void CalibrateLocomotion(Animator animator)
-        {
-            // Root motion is disabled for placement, but imported clip velocities still
-            // tell us the speed at which each gait's steps were recorded.
-            _walkSpeed = 1.5f;
-            _runSpeed = 3f;
-            _sprintSpeed = 6f;
-            if (animator.runtimeAnimatorController == null)
-                return;
-            foreach (AnimationClip clip in animator.runtimeAnimatorController.animationClips)
-            {
-                Vector3 velocity = clip.averageSpeed;
-                float speed = new Vector2(velocity.x, velocity.z).magnitude;
-                if (float.IsNaN(speed) || float.IsInfinity(speed) || speed < 0.1f)
-                    continue; // In-place clips need the nominal gait speeds above.
-                switch (clip.name)
-                {
-                    case "walking": _walkSpeed = speed; break;
-                    case "runninig": _runSpeed = speed; break;
-                    case "sprint": _sprintSpeed = speed; break;
-                }
-            }
-            // Preserve a valid ordering if an imported clip has no useful trajectory.
-            if (_walkSpeed >= _runSpeed || _runSpeed >= _sprintSpeed)
-            {
-                _walkSpeed = 1.5f;
-                _runSpeed = 3f;
-                _sprintSpeed = 6f;
-            }
+            _locomotion.Apply(_animationSpeedFraction * SpeedAtFullSlider, _animationSpeedFraction);
         }
 
         // Advance continuously around the selected lane and return the ground position.
@@ -240,7 +201,6 @@ namespace StadionTracking
         // Draw a complete lap from the entry point and a short direction arrow.
         private void DrawRoute()
         {
-
             const int segments = 800;
             _route.positionCount = segments + 1;
             for (int i = 0; i <= segments; i++)
@@ -287,7 +247,6 @@ namespace StadionTracking
 
         private void OnDestroy()
         {
-
             if (_ownedMaterial != null)
                 Destroy(_ownedMaterial);
         }

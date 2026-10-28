@@ -42,7 +42,7 @@ adb devices
 adb reverse tcp:8081 tcp:8081
 ```
 
-Danach MarkerML2 auf der Brille öffnen. Die App verwendet standardmäßig `ws://127.0.0.1:8081/ws`. Die Portweiterleitung verbindet diese Adresse auf der Brille mit dem Server auf dem Rechner. Nach einem Geräte-Neustart die Weiterleitung erneut einrichten.
+Für USB in der Serverkonfiguration `ws://127.0.0.1:8081/ws` eintragen und danach MarkerML2 auf der Brille öffnen. Die Portweiterleitung verbindet diese Adresse auf der Brille mit dem Server auf dem Rechner. Nach einem Geräte-Neustart die Weiterleitung erneut einrichten.
 
 Für WLAN die erreichbare LAN-Adresse des Rechners in `Assets/Resources/RunnerServer.json` hinterlegen und die App neu bauen. Alternativ kann eine `runner-server.json` im geräteseitigen `Application.persistentDataPath` die Adresse überschreiben. Details stehen in [Docs/RunningServer.md](Docs/RunningServer.md).
 
@@ -126,12 +126,14 @@ flowchart TD
     Speed[RunnerSpeedInput] -->|Nutzertempo| World
     Geometry[StadiumTrackGeometry] --> World
     World --> Companion[TreadmillCompanion: SideBySide]
-    World --> Stats[ActiveStatsDisplay]
-    Stats --> Checkpoints[LapCheckpointTracker]
+    World --> Session[RunnerSession]
+    Session --> Stats[ActiveStatsDisplay]
+    Session --> Checkpoints[LapCheckpointTracker]
     Checkpoints --> Recording[LapGhostRecording]
     Recording --> Playback[LapGhostPlayback: TempoPartner]
     World --> Playback
-    Stats --> Client
+    Session --> Playback
+    Session --> Client
     Playback --> Client
     BLE[BleConnection und GATT] --> Measurements[SensorMeasurements]
     Measurements --> SensorUI[HeartRateUI]
@@ -140,7 +142,7 @@ flowchart TD
 
 Die Architektur ist komponentenbasiert. Unity-`MonoBehaviour`-Komponenten verbinden Szene, Gerätefunktionen und Darstellung. Reine C#-Klassen übernehmen Geometrie, Geschwindigkeitswahl, Checkpoints und Ghost-Daten, sodass sich diese Logik auch ohne laufende Unity-Szene prüfen lässt.
 
-`StraightTreadmillWorld` ist die zentrale Laufwelt-Komponente. `RunnerServerClient` verbindet die Fernsteuerung mit dieser Welt. `ActiveStatsDisplay` übernimmt neben der Anzeige auch die Session-Uhr, Checkpoint-Auswertung und Synchronisation der Ghost-Wiedergabe. Das HUD ist daher derzeit auch Teil der Lauf- und Ghost-Logik.
+`StraightTreadmillWorld` ist die zentrale Laufwelt-Komponente. `RunnerServerClient` verbindet die Fernsteuerung mit dieser Welt. `RunnerSession` besitzt unabhängig vom HUD die Session-Uhr, Checkpoint-Auswertung und Ghost-Synchronisation. `ActiveStatsDisplay` zeigt diese Daten an; auch bei deaktiviertem HUD läuft die Session weiter. Die Quellen registrieren sich direkt statt pro Frame in der Szene gesucht zu werden.
 
 ### 4.1 Ablauf beim Start
 
@@ -219,13 +221,19 @@ Die folgenden Tabellen decken alle eigenen C#-Skripte unter `Assets/Scripts` ab.
 | --- | --- |
 | `TreadmillCompanion.cs` | Stellt den SideBySide-Begleiter dar und definiert `TreadmillRunMode`. `ConfigurePlacement(...)` setzt Richtung, Abstand und Blickrichtung; `UseLanePlacement()` aktiviert die Bahnauswahl; `SetMode(...)` wählt den Modus; `Synchronize()` erzeugt/positioniert/animiert den Begleiter. Im TempoPartner-Modus wird dieser Avatar ausgeblendet, weil dort die Ghost-Wiedergabe zuständig ist. |
 | `LocomotionTiming.cs` | `Evaluate(...)` berechnet aus Geschwindigkeit und kalibrierten Geh-/Laufgeschwindigkeiten die Animationsmischung und zeitliche Wiedergabe. Verbindet Distanztempo und sichtbare Gangart. |
+| `AvatarLocomotion.cs` | Gemeinsame Erkennung der Animator-Parameter, Kalibrierung der Gangarten und Anwendung der Animationswerte für Begleiter, Ghost und Vorschau. Die Aufrufer bestimmen weiterhin selbst, ob die Animation bei Pause einfriert oder in Idle übergeht. |
+| `AvatarGrounding.cs` | Gemeinsame Messung des tiefsten Skinned-Mesh-Punkts und des Sohlenversatzes. Der Marker-Läufer behält seinen eigenen Fallback für statische Meshes. |
 | `LapCheckpointTracker.cs` | Wertet mit `Update(distance, elapsed)` 100-m-Checkpoints, Runden und Kilometer aus. Interpoliert Grenzübertritte zwischen Updates, verwaltet Vergleichszeiten und tatsächlich gemessene Rekorde und versorgt `GhostRecording`. Ziel-/Beispielwerte sind von gemessenen Rekorden getrennt. |
-| `LapGhostRecording.cs` | Speichert Zeit-/Distanzpunkte einer vollständigen Runde und übernimmt ein geeignetes neues Bestprofil. `Begin(...)`, `Record(...)`, `Finish(...)` werden vom Tracker genutzt; normale Samples sind auf ungefähr 10 Hz begrenzt. `Evaluate(...)` interpoliert innerhalb einer Runde, `EvaluateContinuous(...)` spielt Runden fortlaufend ab. Daten bleiben im Arbeitsspeicher. |
+| `LapGhostRecording.cs` | Speichert Zeit-/Distanzpunkte einer vollständigen Runde und übernimmt ein geeignetes neues Bestprofil. `Begin(...)`, `Record(...)`, `Finish(...)` werden vom Tracker genutzt; normale Samples sind auf ungefähr 10 Hz begrenzt. `Evaluate(...)` interpoliert innerhalb einer Runde, `EvaluateContinuous(...)` spielt Runden fortlaufend ab. Bestprofil und Ghost-Samples werden zusätzlich durch `RunnerRecordsStore` dauerhaft gespeichert. |
 | `LapGhostPlayback.cs` | Erzeugt und animiert den TempoPartner-Avatar. `Synchronize(...)` verbindet Session-Uhr, Bestprofil und Weltpose; `SetTestSpeed(...)` aktiviert/deaktiviert das separate Ghost-Testtempo; `ResetTestPosition()` setzt dessen Fortschritt zurück. Misst den Sohlenversatz und räumt erzeugte Avatarobjekte auf. |
 | `GhostTestMotion.cs` | Reiner Testtempo-Integrator. `SetSpeed(...)` übernimmt ein optionales Tempo und die aktuelle Distanz; `Advance(...)` bewegt nur bei laufender Session; `Reset()` setzt die Distanz zurück. |
-| `ActiveStatsDisplay.cs` | Betreibt HUD, Session-Uhr, Checkpoint-Tracker und Ghost-Synchronisation. `ResetSessionStats()` löscht Zeit/Rekorde/Aufnahme; `BindRunner(...)` bindet den Vorschaupfad; `LateUpdate()` ermittelt die aktive Welt, aktualisiert Uhr und Distanz und ruft die Ghost-Wiedergabe auf. Formatiert Pace, Zeit und Checkpointvergleich. |
+| `RunnerSession.cs` | Eigenes Szenenobjekt für Session-Uhr, Checkpoints, Rekorde und Ghost. Verarbeitet direkt gebundene Laufquellen unabhängig von HUD und Kamera; Pause, Reset und Quellenwechsel werden hier ausgewertet. |
+| `RunnerRecordsStore.cs`, `RunnerPersonalBest.cs` | Gespeicherte persönliche Bestleistungen und Ghost-Samples laden, validieren und ausschließlich durch bessere Werte ersetzen. |
+| `RunnerRecordPersistence.cs` | Gemeinsame Hintergrundwarteschlange für Dateizugriffe mit automatischer Wiederholung fehlgeschlagener Schreibaufträge. Ausstehende Daten bleiben bei Sessionwechseln erhalten. |
+| `RunnerSessionState.cs` | Typisierte Session-/Trackingzustände und lesbare Trackingmeldungen. Das Serverprotokoll behält die bisherigen Zustandstexte. |
+| `ActiveStatsDisplay.cs` | Formatiert Pace, Zeit und Checkpointvergleich aus der Session. Die bisherigen Methoden `ResetSessionStats()`, `RefreshTargetPace()` und `BindRunner(...)` delegieren zur unabhängigen Session. |
 
-Ein vollständiger 100-m-/400-m-/1-km-Abschnitt ist für einen gemessenen Rekord erforderlich. Eine langsamere erste Runde kann ein persönlicher Session-Rekord sein, während der Ghost weiterhin eine schnellere Zielvorgabe verwendet. Neu konfigurieren, Zurücksetzen, Umgebungswechsel und App-Neustart beginnen eine neue Rekorderfassung.
+Ein vollständiger 100-m-/400-m-/1-km-Abschnitt ist für einen gemessenen Rekord erforderlich. Die erste vollständige Runde wird zum Ghost-Profil, auch wenn sie langsamer als die Zielpace ist. Ohne vollständige Aufnahme verwendet der Ghost die Zielpace. Pace-, Modus- und Sichtbarkeitsänderungen erhalten Zeit, Distanz, Rekorde und Ghost-Aufnahme und pausieren den Lauf. Explizites Zurücksetzen, Umgebungswechsel und App-Neustart beginnen einen neuen Lauf; gespeicherte persönliche Bestleistungen bleiben erhalten und werden für die passende Umgebung geladen.
 
 ### 5.5 Oberfläche und lokale Navigation
 
@@ -239,19 +247,25 @@ Ein vollständiger 100-m-/400-m-/1-km-Abschnitt ist für einen gemessenen Rekord
 
 ### 5.6 Netzwerk
 
+Die Aufteilung des Codes und die erhaltenen Kompatibilitätspfade sind in [Docs/CodeStructure.md](Docs/CodeStructure.md) beschrieben.
+
 | Skript | Aufgabe und wichtige Funktionen |
 | --- | --- |
-| `RunnerServerClient.cs` | Installiert und initialisiert die Serverbrücke, bindet Laufwelt/Tracker/HUD/Begleiter, liest die Serverkonfiguration und hält die WebSocket-Verbindung. `ConnectLoop(...)` verbindet mit wachsender Wartezeit erneut; `Receive(...)` liest Nachrichten. Thread-sichere Queues übergeben Nachrichten an `Update()`, sodass Unity-Aktionen auf dem Hauptthread laufen. `Handle(...)` verarbeitet Nachrichten und Bestätigungen; `Apply(...)` führt die unterstützten Befehle aus; `SpawnOnStartLane()` setzt den Startavatar auf Bahn 3. Sendet Registry, Telemetrie und ACKs und pausiert bei Verbindungsabbruch. |
+| `RunnerServerClient.cs` | Initialisiert die Unity-Serverbrücke und verarbeitet Verbindungsereignisse auf dem Hauptthread. Zeigt zuerst den Adressdialog; pausiert bei Trennung. Die Teilklassen `RunnerServerClient.Commands.cs` und `RunnerServerClient.Telemetry.cs` enthalten Befehle/ACKs und die Telemetrie. |
+| `RunnerServerConnection.cs` | WebSocket-Aufbau mit festem Handshake-Timeout, Retry, typisierte Statusereignisse, konkrete Fehlerdiagnose und Abbruch. Jede Verbindung besitzt eigene Queues, damit ein Adresswechsel keine Nachrichten alter Verbindungsversuche übernimmt. |
+| `RunnerServerConfiguration.cs` | Lädt die gebündelte Adresse und das Geräte-Override, normalisiert IP-/WebSocket-Adressen und speichert die Eingabe. |
+| `RunnerServerSetup.cs` | Startdialog mit Adressfeld, Zahlenfeld und Verbinden-Button; bleibt bei Fehlern zur Korrektur offen. |
+| `RunnerCommandValues.cs` | Unity-unabhängige Validierung numerischer und boolescher Befehlswerte mit Typ- und Bereichsprüfung. |
 
 ## 6. Serversteuerung und Zustände
 
-Die eingebaute Adresse steht in `Assets/Resources/RunnerServer.json`: `ws://127.0.0.1:8081/ws`. Eine Datei `runner-server.json` in `Application.persistentDataPath` kann sie überschreiben. Bei USB verbindet `adb reverse tcp:8081 tcp:8081` die Brillenadresse mit dem Server auf dem Rechner. Für WLAN wird die erreichbare LAN-Adresse des Rechners benötigt.
+Die eingebaute WLAN-Adresse steht in `Assets/Resources/RunnerServer.json`: aktuell `ws://192.168.178.120:8081/ws`. Eine Datei `runner-server.json` in `Application.persistentDataPath` kann sie überschreiben. Für USB dort `ws://127.0.0.1:8081/ws` verwenden; `adb reverse tcp:8081 tcp:8081` verbindet diese Brillenadresse mit dem Server auf dem Rechner. Bei einem Wechsel der WLAN-IP muss die Konfiguration angepasst werden.
 
 Nach dem Verbindungsaufbau sendet Unity `hello` mit Rolle `headset` und anschließend eine `registry` mit unterstützten Befehlen. Das Dashboard darf nur auf tatsächlich gemeldete Fähigkeiten vertrauen.
 
 | Befehlsgruppe | Funktion |
 | --- | --- |
-| `runningMate.configure` | Pace, Modus und Bahnsichtbarkeit konfigurieren; Statistik/Aufnahme zurücksetzen und pausieren |
+| `runningMate.configure` | Pace, Modus und Bahnsichtbarkeit konfigurieren; Statistik/Aufnahme erhalten und pausieren |
 | `runningMate.command` | `spawn`, `start`, `pause`, `resume`, `stop`, `reset`, `despawn` |
 | `runningMate.setLane` | Avatar-Bahn 1–8 auswählen |
 | `runningMate.setUserSpeed` | Feste Nutzer-km/h oder Laufbandquelle wählen |
@@ -260,7 +274,7 @@ Nach dem Verbindungsaufbau sendet Unity `hello` mit Rolle `headset` und anschlie
 | `scene.rescanMarker` | Neue Marker-/Bodenplatzierung anfordern |
 | `scene.captureTrackPoint` | Stadionreferenz A/B erfassen |
 | `runningMate.adjust` | Absolute Feinverschiebung/Drehung oder Rücksetzen der Feinversätze |
-| `avatar.configurePlacement`, `avatar.reposition` | Relative SideBySide-Platzierung beziehungsweise erneute Blickausrichtung |
+| `avatar.configurePlacement`, `avatar.reposition` | Relative SideBySide-Platzierung beziehungsweise Rückkehr zum Markeranker auf der Boden-Plane |
 | `scene.setRunningMatePathVisible` | Bahn ein-/ausblenden |
 | `scene.setRunningMateHudVisible`, `scene.setHudVisible` | HUD ein-/ausblenden |
 | `sensor.connect`, `sensor.disconnect` | Vorhandene BLE-Verbindung bedienen; kein neuer Scan durch diese Befehle |
@@ -269,7 +283,7 @@ Kompatibilitätswege für Körperhöhe und manuelle Höhenkorrektur bleiben im C
 
 Der Client meldet `Stopped`, `Ready`, `Running` oder `Paused`. Sichtbarer Avatar und laufende Session sind getrennte Zustände. `start`/`spawn` setzen Bahn 3, `resume` erhält die später gewählte Bahn. Ein Verbindungsabbruch pausiert; ein Wiederverbinden startet nicht automatisch weiter.
 
-Telemetrie enthält Nutzerdistanz, Zeit, Tempo, Runden, Umgebung, gewählte Quelle, Marker-/Kalibrierungsstatus, Avatar-Bahn, Ghost-Daten und Rekorde. Die Laufdaten stehen unter `data.treadmill` sowie kompatibel unter `data.runningMate`; hinzu kommen BLE-Verbindungsstatus und HUD-Sichtbarkeit.
+Telemetrie enthält Nutzerdistanz, Zeit, Tempo, Runden, Umgebung, gewählte Quelle, Marker-/Kalibrierungsstatus, Trackingzustand, Avatar-Bahn, Ghost-Daten und Rekorde. `recordsStatus` enthält gegebenenfalls einen Lade-/Speicherfehler. Die Laufdaten stehen unter `data.treadmill` sowie kompatibel unter `data.runningMate`; hinzu kommen BLE-Verbindungsstatus und HUD-Sichtbarkeit.
 
 ## 7. BLE-Sensorarchitektur und Skripte
 
@@ -351,7 +365,13 @@ Importierte Beispielskripte gehören zu den jeweiligen Paketen und bilden nicht 
 
 ## 10. Tests und Hilfsprogramme
 
-Die Dateien unter `Tests/StadionTracking` haben jeweils einen eigenen `Main()`-Einstiegspunkt und prüfen Unity-unabhängige Logik. Sie sind keine automatisch entdeckten Unity-Test-Runner-Tests. Für ihre Ausführung müssen die jeweils benötigten C#-Quelldateien gemeinsam kompiliert werden; nicht alle `Main()`-Dateien ohne Auswahl eines Einstiegspunkts zusammenbauen.
+Die Dateien unter `Tests/StadionTracking` haben jeweils einen eigenen `Main()`-Einstiegspunkt und prüfen Unity-unabhängige Logik. Sie sind keine automatisch entdeckten Unity-Test-Runner-Tests. Alle Prüfungen lassen sich mit Python 3 und einem installierten .NET SDK ab Version 6 gemeinsam ausführen:
+
+```bash
+python3 Tools/run_logic_checks.py
+```
+
+Das Werkzeug wählt einen gemeinsamen Einstiegspunkt, kompiliert in einem temporären Verzeichnis und benötigt keine Paketdownloads. Für die Protokollprüfungen wird die vorhandene Newtonsoft.Json-DLL aus `Library/PackageCache` verwendet; das Projekt dafür zuvor einmal in Unity öffnen. Die Prüfungen ersetzen keine Play-Mode- oder Gerätetests für Animation, Mesh-Bodenabstand und XR-Platzierung.
 
 | Datei | Prüfthema |
 | --- | --- |
@@ -362,6 +382,7 @@ Die Dateien unter `Tests/StadionTracking` haben jeweils einen eigenen `Main()`-E
 | `GhostTestMotionChecks.cs` | Separates Ghost-Testtempo, Tempoänderungen und Pause |
 | `MeasuredRecordsChecks.cs` | Tatsächlich gemessene Rekorde und Abgrenzung zu Vorgaben |
 | `RunnerSpeedInputChecks.cs` | Geschwindigkeitsquellen, Messwertvalidierung und Signalalter |
+| `CommandValueChecks.cs` | Numerische Protokolltypen, Grenzwerte, fehlende Werte, Nullwerte und boolesche Werte |
 
 `Tools/generate_simple_track.py` liest Konstanten aus `StadiumTrackGeometry.cs` und `SimpleTrackMap.cs` und erzeugt mit Python/Pillow `Assets/Scripts/StadionTracking/Resources/SimpleTrack.png`. Dadurch beruhen Karte und Laufbahn auf denselben Abmessungen.
 
@@ -372,7 +393,8 @@ Die Dateien unter `Tests/StadionTracking` haben jeweils einen eigenen `Main()`-E
 | Serveradresse im Build | `Assets/Resources/RunnerServer.json` |
 | Optionale Serverüberschreibung | `Application.persistentDataPath/runner-server.json` auf dem Gerät |
 | Pace/Modus und Menüübergabe | Statische `RunnerSessionSettings` im laufenden Prozess |
-| Zeit, Distanz, Rekorde, Ghost-Samples | Laufzeitobjekte der aktuellen Unity-Session; kein dauerhafter Bestzeit-Speicher |
+| Zeit, Distanz und laufende Aufnahme | Laufzeitobjekte der aktuellen Session |
+| Persönliche Bestzeiten und Ghost der besten Runde | Versionierte JSON-Dateien in `Application.persistentDataPath/runner-records/`, getrennt nach Umgebung; temporärer Schreibpfad und `.bak`-Sicherung |
 | AR-Platzierung | Aktuelle XR-Session; kein dauerhafter räumlicher Anker über Neustarts |
 | BLE-Profile | ScriptableObject-Assets im Projekt |
 | Dashboard-Entwurf | Laut vorhandener Serverdokumentation lokal im Browser; getrennt von der angewendeten Unity-Konfiguration |
@@ -399,7 +421,7 @@ Server-Session, Serveraufnahme und Unity-Lauf sind getrennte Abläufe. Eine gest
 | Nutzer-Testtempo oder Laufbandsignal | `RunnerSpeedInput.cs`, Geschwindigkeits-API der Welt |
 | SideBySide-Position und Animation | `TreadmillCompanion.cs`, `LocomotionTiming.cs` |
 | Ghost-Pace, Profilwiedergabe oder Testtempo | `LapGhostPlayback.cs`, `LapGhostRecording.cs`, `GhostTestMotion.cs` |
-| Rekorde, Zwischenzeiten oder Uhr | `LapCheckpointTracker.cs`, `ActiveStatsDisplay.cs` |
+| Rekorde, Zwischenzeiten oder Uhr | `LapCheckpointTracker.cs`, `RunnerSession.cs` |
 | Fernsteuerungsbefehl oder Telemetrie | `RunnerServerClient.cs`, `Docs/RunningServer.md`, zusätzlich separates Serverprojekt |
 | HUD-Gestaltung | `RunnerUiTheme.cs`, `RunnerArPanel.cs`, `RunnerGlassGraphic.cs`, HUD-Prefab |
 | Hand-Ray oder Pinch | `Gestures.cs`, Input-Action-Assets und XR-Interactor der Szene |

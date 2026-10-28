@@ -17,8 +17,8 @@ internal static class LapCheckpointTrackerChecks
         Check(tracker.HasCheckpointResult && Math.Abs(tracker.LastCheckpointDeltaSeconds) < 0.001 &&
             Math.Abs(tracker.LastCheckpointMetres - 100) < 0.001, "first split compares to the example");
         tracker.Update(400, 100);
-        Check(Math.Abs(tracker.BestLapSeconds - 100) < 0.001 && tracker.BestLapIsExample,
-            "matching sample lap does not replace the example record");
+        Check(Math.Abs(tracker.BestLapSeconds - 100) < 0.001 && !tracker.BestLapIsExample && tracker.GhostRecording.HasRecording,
+            "first complete lap replaces the target even when its time matches");
         Check(tracker.HasCheckpointResult && tracker.LastCheckpointLabel == "400 m (Runde)",
             "400m lap completion result is displayed and not swallowed");
 
@@ -84,7 +84,7 @@ internal static class LapCheckpointTrackerChecks
         Check(partial.BestLapIsExample && Math.Abs(partial.Fastest100mSeconds - 25) < 0.001,
             "starting mid-lap cannot create a partial-lap or partial-segment record");
         partial.Update(800, 110);
-        Check(partial.BestLapIsExample, "the next complete lap uses its own start time");
+        Check(!partial.BestLapIsExample && partial.GhostRecording.HasRecording, "the next complete lap uses its own start time and becomes the ghost");
         partial.Update(800, 0);
         partial.Update(900, 25);
         Check(Math.Abs(partial.LastCheckpointDeltaSeconds) < 0.001,
