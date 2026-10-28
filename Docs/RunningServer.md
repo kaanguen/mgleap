@@ -117,7 +117,7 @@ Unity sendet ungefähr mit 5 Hz ein `telemetry`-Objekt. Die aktuellen Laufwerte 
 | `ghost` | `active`, `distance`, `trackPositionMetres`, `speedKmh`, `gapMetres`, `testMode`, `testSpeedKmh`, `recordedLap`, `hasRecording`, `playbackMode` (`TestSpeed`/`RecordedLap`/`TargetPace`) |
 | `records` | `fastest100mSeconds`, `bestLapSeconds`, `fastest1KmSeconds`: gemessene Zeiten oder `null` |
 
-Zusätzlich: `data.ble.connected` und `data.huds.stadium`. Aktuell werden keine vollständigen BLE-Vitalwerte oder Übungserkennungen von dieser Brücke geliefert. Verschachtelte Objekte im Relay werden ersetzt; der Client sendet vollständige Teilobjekte.
+Zusätzlich: `data.ble.connected`, `data.ble.spo2` (frischer gültiger SpO₂-Wert oder `null`) und `data.huds.stadium`. Andere BLE-Vitalwerte und Übungserkennungen werden von dieser Brücke noch nicht geliefert. Verschachtelte Objekte im Relay werden ersetzt; der Client sendet vollständige Teilobjekte.
 
 ## Persönliche Bestleistungen auf der Brille
 
@@ -141,3 +141,18 @@ Aufnahmen liegen in `RunningServer/recordings/<ID>/`: `ble_data.csv`, `exercise_
 ## Geprüfter Stand
 
 Der Marker-/Floor-Ray-Spawn wurde mit Marker 39 auf der Magic Leap 2 bestätigt: `floorConfirmed: true`, `placementReady: true`, `avatarLane: 3`, `ghost.active: true`, gestoppte Session. Die danach ergänzte Geschwindigkeitsquellen-Auswahl und unabhängige Pace-Anpassung sind kompiliert/getestet, aber noch nicht im zuletzt installierten Build enthalten. Die feste reale 400-m-Bahn und echte Laufband-Hardware sind noch nicht durch einen vollständigen Geräte-Lauf verifiziert.
+
+## Schwebende Sammelkugeln und Sauerstoffsensor
+
+Im Dashboard unter **Laufband → Sammelkugeln** die Quelle auswählen und mit **Kugelmenge anwenden** an die Brille senden:
+
+- **Feste Eingabe:** 0–30 Kugeln pro Reihe, unabhängig vom Sensor. 0 schaltet die Kugeln aus. Standard: 10.
+- **Sauerstoffsensor:** aktuelle, gültige SpO₂-Pakete der bestehenden BLE-Verbindung bestimmen die Anzahl. Der vorhandene Sensor-Dialog auf der Brille wird beim Auswählen geöffnet; dort scannen und verbinden. Ohne frische Daten, bei Warnstatus oder nach einer Trennung entstehen keine Kugeln.
+
+Standard-Spielzuordnung: 90 % → 2 Kugeln, 100 % → 20 Kugeln pro Reihe, dazwischen linear gerundet und an den Enden begrenzt. Die Zuordnung ist in `TrackCollectibles` im Inspector einstellbar. Reihen bleiben beim Mengenwechsel räumlich verankert; der Sammelzähler bleibt erhalten. Das 3D-Objekt ist weiterhin über **VirtualWorld → Track Collectibles → Collectible Prefab** austauschbar.
+
+Befehl: `runningMate.setCollectibles`, Payload `{"source":"Fixed","fixedCount":10}` oder `{"source":"OxygenSensor"}`. `fixedCount` ist optional und bleibt bei Auslassung erhalten. Änderungen pausieren den Lauf nicht. Unbekannte Felder, Quellen und Werte außerhalb ganzzahlig 0–30 werden abgewiesen.
+
+Telemetrie: `data.treadmill.collectibles` und `data.runningMate.collectibles` enthalten `source`, `fixedCount`, `rowCount`, `oxygenReady`, `oxygenPercent` (Zahl oder `null`) und `collected`. `data.ble.spo2` liefert ebenfalls den frischen numerischen Sauerstoffwert oder `null`.
+
+Das Dashboard benötigt die neue Unity-Registry; für die Brille ist ein neuer App-Build nötig. Die Sensorlogik wird mit simulierten PLX-Paketen geprüft; ein Test mit dem realen Sauerstoffsensor bleibt separat erforderlich.

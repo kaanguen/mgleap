@@ -16,6 +16,7 @@ public class SensorMeasurements : MonoBehaviour
         public string Text = "wird eingerichtet";
         public bool Received, Waiting;
         public float At;
+        public double OxygenPercent = double.NaN;
         public bool MaximumQuality;
         public string Quality="—", Hint="noch kein Hinweis empfangen";
         public float HintAt=-1;
@@ -26,6 +27,17 @@ public class SensorMeasurements : MonoBehaviour
     Value heartRate;
     public string Measurement => heartRate == null ? "— bpm" : heartRate.Text;
     public string RrIntervals { get; private set; } = "";
+    // Numeric data for gameplay/telemetry; never parse the localized UI text.
+    public bool TryGetOxygenPercent(out double percent) {
+        percent=double.NaN;
+        if (!isActiveAndEnabled || bluetooth==null || !bluetooth.Connected) return false;
+        foreach (var v in ordered) {
+            if (v.Channel.format!=BleValueFormat.PulseOximeter || !v.Received ||
+                Time.realtimeSinceStartup-v.At>v.Channel.staleSeconds || double.IsNaN(v.OxygenPercent)) continue;
+            percent=v.OxygenPercent; return true;
+        }
+        return false;
+    }
     public string Details {
         get {
             string temperature="—", spo2="—";
@@ -116,6 +128,8 @@ public class SensorMeasurements : MonoBehaviour
             case BleValueFormat.PulseOximeter:
                 var p=CosinussParsers.Plx(bytes,Encoding());
                 bool warning=(p.MeasurementStatus.GetValueOrDefault() & 0xFC00)!=0 || (p.DeviceStatus.GetValueOrDefault() & 0xFFFE)!=0;
+                value.OxygenPercent=!warning && !double.IsNaN(p.Spo2) && !double.IsInfinity(p.Spo2) && p.Spo2>0 && p.Spo2<=100
+                    ? p.Spo2 : double.NaN;
                 return (p.Spo2<0 || p.Spo2>100 ? "ungültiger Wertebereich" : Number(p.Spo2," %"))
                     +" | Perfusion: "+Number(p.Perfusion," %")+(warning ? " (Status prüfen)" : "")
                     +(p.MeasurementStatus.HasValue ? " M=0x"+p.MeasurementStatus.Value.ToString("X4") : "")
