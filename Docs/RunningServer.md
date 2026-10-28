@@ -4,10 +4,9 @@
 
 ## Einrichtung
 
-Serverordner: `/Users/kaan/RunningServer/`.
+
 
 ```bash
-cd /Users/kaan/RunningServer
 npm start
 ```
 

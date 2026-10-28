@@ -18,6 +18,40 @@ Davon unabhängig gibt es zwei Avatar-Modi:
 
 Die Hauptbedienung erfolgt über das Web-Dashboard des **RunningServer**. In der Brille zeigt ein HUD unter anderem Zeit, Distanz, Pace und Checkpoints. Zusätzlich enthält das Projekt ein eigenes BLE-Paket für Herzfrequenz und weitere Sensordaten.
 
+## RunningServer herunterladen, aktualisieren und starten
+
+Der RunningServer liegt in einem eigenen Repository: [kaanguen/RunningServer](https://github.com/kaanguen/RunningServer). Benötigt werden **Git, Node.js ab Version 22 und npm**. Die folgenden Befehle werden im Terminal auf dem Rechner ausgeführt.
+
+### Beim ersten Mal herunterladen
+
+```bash
+
+git clone https://github.com/kaanguen/RunningServer.git
+cd RunningServer
+npm install
+npm start
+```
+
+```bash
+```
+
+#
+
+### Magic Leap per USB verbinden
+
+Bei angeschlossener und für USB-Debugging freigegebener Brille:
+
+```bash
+adb devices
+adb reverse tcp:8081 tcp:8081
+```
+
+Danach MarkerML2 auf der Brille öffnen. Die App verwendet standardmäßig `ws://127.0.0.1:8081/ws`; die USB-Portweiterleitung verbindet diese Adresse mit dem Server auf dem Rechner. Nach einem Geräte-Neustart die Weiterleitung erneut einrichten.
+
+Für WLAN stattdessen die LAN-Adresse des Rechners in `Assets/Resources/RunnerServer.json` hinterlegen und die App neu bauen oder die geräteseitige `runner-server.json` verwenden. Weitere Details stehen in [Docs/RunningServer.md](Docs/RunningServer.md).
+
+Änderungen am Server-Dashboard werden nach einem Neustart beziehungsweise Neuladen der Webseite wirksam. Änderungen am Unity-C#-Code erfordern einen neuen App-Build auf der Brille.
+
 ## 2. Technische Grundlage
 
 | Bereich | Im Projekt verwendete Grundlage |
