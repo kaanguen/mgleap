@@ -48,7 +48,7 @@ namespace StadionTracking
         }
         private void Awake()
         {
-            DisableGlobalDimming();
+            DisableDimming();
             world = GetComponent<StraightTreadmillWorld>();
             companion = FindFirstObjectByType<TreadmillCompanion>();
             stats = FindFirstObjectByType<ActiveStatsDisplay>();
@@ -83,6 +83,7 @@ namespace StadionTracking
         }
         private void Start()
         {
+            DisableDimming();
             // Start after all scene Awake calls, including the old session bootstrap.
             world.SessionPaused = true;
             string url = new Configuration().serverUrl;
@@ -476,7 +477,7 @@ namespace StadionTracking
             if (serverSetup != null) Destroy(serverSetup.gameObject);
         }
 
-        private static void DisableGlobalDimming()
+        private static void DisableDimming()
         {
             var settings = UnityEngine.XR.OpenXR.OpenXRSettings.Instance;
             if (settings == null) return;
@@ -484,11 +485,13 @@ namespace StadionTracking
             if (rendering == null) return;
             rendering.GlobalDimmerEnabled = false;
             rendering.GlobalDimmerValue = 0f;
+            // Additive passthrough also disables segmented dimming driven by rendered alpha.
+            rendering.BlendMode = UnityEngine.XR.OpenXR.NativeTypes.XrEnvironmentBlendMode.Additive;
         }
 
         private void OnApplicationPause(bool paused)
         {
-            if (!paused) DisableGlobalDimming();
+            if (!paused) DisableDimming();
         }
     }
 }
