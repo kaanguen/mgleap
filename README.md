@@ -319,7 +319,7 @@ HeartRateUI → BleConnection → Velorexe / AndroidBleGattBackend
 
 `Editor/BleProfileMenu.cs` stellt den Menüpunkt **Assets → Create → BLE → Cosinuss-Standardprofil** bereit. `Runtime/Plugins/Android/cosinuss-gatt.jar` enthält die native Companion-Brücke. Das Android-Manifest und seine BLE-Berechtigungen sind für den Gerätebetrieb erforderlich.
 
-Das Paket kann Sensordaten lokal auswerten. Die RunningServer-Brücke überträgt derzeit nur den BLE-Verbindungsstatus, keine vollständigen Vitaldaten. **Die BLE-Sensoranbindung ist keine fertige Laufbandgeschwindigkeits-Anbindung.** Ein zukünftiger Adapter muss `ReportTreadmillSpeedKmh(...)` auf dem Unity-Hauptthread aufrufen und bei Signalverlust `ClearTreadmillSignal()` melden.
+Das Paket kann Sensordaten lokal auswerten. Die RunningServer-Brücke überträgt den BLE-Verbindungsstatus und frische, gültige SpO₂-Werte. Unter **Laufband → Sammelkugeln** steuert wahlweise der Sauerstoffsensor die Kugelmenge oder eine feste Eingabe von 0–30 Kugeln pro Reihe ohne Sensor. Sensorwahl öffnet den bestehenden Sensor-Dialog auf der Brille; dort scannen und verbinden. Höhere SpO₂-Werte erzeugen mehr Kugeln; ohne gültige Daten pausiert die Kugelerzeugung im Sensormodus. Details zur Spielzuordnung und zum Protokoll stehen in [Docs/RunningServer.md](Docs/RunningServer.md#schwebende-sammelkugeln-und-sauerstoffsensor). **Die BLE-Sensoranbindung ist keine fertige Laufbandgeschwindigkeits-Anbindung.** Ein zukünftiger Adapter muss `ReportTreadmillSpeedKmh(...)` auf dem Unity-Hauptthread aufrufen und bei Signalverlust `ClearTreadmillSignal()` melden.
 
 Details und Einschränkungen stehen in [Packages/com.kaan.ble-sensors/README.md](Packages/com.kaan.ble-sensors/README.md).
 

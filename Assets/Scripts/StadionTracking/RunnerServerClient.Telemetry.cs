@@ -52,10 +52,20 @@ namespace StadionTracking
                 ["recordedLap"] = ghost.IsRecordedLap, ["hasRecording"] = ghost.HasRecordedLap,
                 ["playbackMode"] = ghost.PlaybackMode };
             var ble = FindFirstObjectByType<BleConnection>();
+            var pickups = world.GetComponent<TrackCollectibles>();
+            run["collectibles"] = pickups == null ? null : new JObject {
+                ["source"] = pickups.SpawnSource.ToString(), ["fixedCount"] = pickups.FixedCount,
+                ["rowCount"] = pickups.CurrentRowCount, ["oxygenReady"] = pickups.OxygenReady,
+                ["oxygenPercent"] = pickups.OxygenPercent.HasValue ? new JValue(pickups.OxygenPercent.Value) : JValue.CreateNull(),
+                ["collected"] = pickups.CollectedCount };
+            var sensor = FindFirstObjectByType<SensorMeasurements>();
+            double oxygen = double.NaN;
+            bool oxygenReady = sensor != null && sensor.TryGetOxygenPercent(out oxygen);
             var hudGroup = statsCanvas != null ? statsCanvas.GetComponent<CanvasGroup>() : null;
             Queue(new JObject { ["type"] = "telemetry", ["data"] = new JObject {
                 ["treadmill"] = run, ["runningMate"] = run.DeepClone(),
-                ["ble"] = new JObject { ["connected"] = ble != null && ble.Connected },
+                ["ble"] = new JObject { ["connected"] = ble != null && ble.Connected,
+                    ["spo2"] = oxygenReady ? new JValue(oxygen) : JValue.CreateNull() },
                 ["huds"] = new JObject { ["stadium"] = statsCanvas != null && (hudGroup == null || hudGroup.alpha > 0) } } });
         }
 

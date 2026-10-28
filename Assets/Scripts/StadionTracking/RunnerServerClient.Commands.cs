@@ -25,7 +25,7 @@ namespace StadionTracking
                     "runningMate.setUserSpeed", "avatar.configurePlacement", "avatar.reposition",
                     "scene.recalibrate", "scene.adjustHeight", "runningMate.adjust", "runningMate.setLane",
                     "scene.setTrackEnvironment", "scene.captureTrackPoint", "scene.rescanMarker",
-                    "sensor.connect", "sensor.disconnect")
+                    "sensor.connect", "sensor.disconnect", "runningMate.setCollectibles")
             }
         };
 
@@ -69,6 +69,15 @@ namespace StadionTracking
         {
             switch (command)
             {
+                case "runningMate.setCollectibles":
+                    RunnerCommandValues.RequireFields(p, "collectibles", "source", "fixedCount");
+                    var pickups = world.GetComponent<TrackCollectibles>();
+                    if (pickups == null) throw new InvalidOperationException("Track collectibles are unavailable.");
+                    string source = (string)p["source"];
+                    if (source != "Fixed" && source != "OxygenSensor") throw new ArgumentException("source must be Fixed or OxygenSensor.");
+                    int fixedCount = (int)RunnerCommandValues.Number(p, "fixedCount", pickups.FixedCount, 0, 30);
+                    pickups.ConfigureSpawning(source == "Fixed" ? CollectibleSpawnSource.Fixed : CollectibleSpawnSource.OxygenSensor, fixedCount);
+                    break;
                 case "scene.rescanMarker":
                     world.BeginMarkerPlacement();
                     startupAvatarPending = true;

@@ -7833,6 +7833,7 @@ GameObject:
   - component: {fileID: 1938132414}
   - component: {fileID: 1938132413}
   - component: {fileID: 1938132415}
+  - component: {fileID: 1938132416}
   m_Layer: 0
   m_Name: VirtualWorld
   m_TagString: Untagged
@@ -7895,6 +7896,39 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 12105cdc07aad4ff9808ec496951fc31, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+--- !u!114 &1938132416
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1938132412}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0d5ad857851914bbbb3dd58c1fdecc74, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  world: {fileID: 1938132413}
+  collectiblePrefab: {fileID: 3930441200059808538, guid: 87564b8914de24551a8450030e9d1b5f, type: 3}
+  visualScale: 1
+  lane: 1
+  visibleDistance: 55
+  firstSpawnDistance: 6
+  spacing: 1.8
+  pickupsPerRow: 10
+  rowGap: 5
+  hoverHeight: 1.05
+  waveHeight: 0.25
+  sidewaysWave: 0.22
+  wavelength: 12
+  bobHeight: 0.07
+  bobFrequency: 0.65
+  spinDegreesPerSecond: 55
+  collectionRadius: 0.85
+  magnetDistance: 2.4
+  onCollected:
+    m_PersistentCalls:
+      m_Calls: []
 --- !u!1 &1947357379
 GameObject:
   m_ObjectHideFlags: 0
