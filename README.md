@@ -1,56 +1,85 @@
-# MarkerML2 – Projektaufbau, Skripte und Funktionsweise
+# MarkerML2 – AR-Lauftraining auf der Magic Leap 2
 
-Stand: 28.10.2026. Diese Übersicht beschreibt den vorhandenen Quellcode und die Projektkonfiguration. Es wurden für diese Dokumentation keine neuen Geräte- oder Laufzeittests durchgeführt. Angaben zu bisherigen Gerätetests stammen aus der vorhandenen README.
+Stand: 28.10.2026.
 
-## 1. Was macht das Projekt?
+MarkerML2 platziert eine virtuelle Laufbahn und einen animierten Laufpartner in der realen Umgebung. Ein AprilTag auf dem Boden und eine erkannte Bodenfläche bestimmen Position, Höhe und Ausrichtung. Die Bedienung erfolgt hauptsächlich über das Web-Dashboard des separaten RunningServer. In der Brille zeigt ein HUD Zeit, Distanz, Pace und Checkpoints.
 
-MarkerML2 ist eine AR-Lauftrainingsanwendung für die **Magic Leap 2**. Sie platziert eine virtuelle Laufbahn und einen animierten Laufpartner in der realen Umgebung. Ein AprilTag auf dem Boden und eine erkannte Bodenfläche bestimmen Position, Höhe und Ausrichtung der Laufwelt.
+## 1. RunningServer herunterladen und starten
 
-Die Anwendung unterstützt zwei Laufumgebungen:
-
-- **Laufband:** Der Nutzer bleibt ungefähr am selben realen Ort. Die virtuelle Umgebung bewegt sich entsprechend seinem simulierten oder gemeldeten Tempo.
-- **Stadion:** Die virtuelle Bahn bleibt räumlich fest. Die projizierte Kopfposition des Nutzers liefert den Laufbahnfortschritt.
-
-Davon unabhängig gibt es zwei Avatar-Modi:
-
-- **SideBySide:** Der Begleiter bleibt auf Höhe des Nutzers beziehungsweise an einer eingestellten relativen Position.
-- **TempoPartner:** Ein Ghost läuft mit eigener Zielpace, einer aufgezeichneten besten Runde oder einem separat eingestellten Testtempo.
-
-Die Hauptbedienung erfolgt über das Web-Dashboard des **RunningServer**. In der Brille zeigt ein HUD unter anderem Zeit, Distanz, Pace und Checkpoints. Zusätzlich enthält das Projekt ein eigenes BLE-Paket für Herzfrequenz und weitere Sensordaten.
-
-## RunningServer herunterladen, aktualisieren und starten
-
-Der RunningServer liegt in einem eigenen Repository: [kaanguen/RunningServer](https://github.com/kaanguen/RunningServer). Benötigt werden **Git, Node.js ab Version 22 und npm**. Die folgenden Befehle werden im Terminal auf dem Rechner ausgeführt.
+Benötigt werden **Git, Node.js ab Version 22 und npm**. Alle folgenden Befehle werden im Terminal auf dem Rechner ausgeführt.
 
 ### Beim ersten Mal herunterladen
 
-```bash
+Der RunningServer ist ein eigenes Repository: [kaanguen/RunningServer](https://github.com/kaanguen/RunningServer).
 
+```bash
+cd ~
 git clone https://github.com/kaanguen/RunningServer.git
 cd RunningServer
 npm install
 npm start
 ```
 
+Falls GitHub eine Anmeldung verlangt, ein Konto mit Zugriff auf das Repository verwenden.
+
+### Vorhandenen RunningServer aktualisieren und starten
+
+Einen bereits laufenden Server im zugehörigen Terminal mit **Ctrl+C** beenden. Anschließend in den Serverordner wechseln, den aktuellen Stand holen, Abhängigkeiten installieren und starten:
+
 ```bash
+cd ~/RunningServer
+git pull --no-rebase origin main
+npm install
+npm start
 ```
 
-#
+Auf diesem Rechner entspricht `~/RunningServer` dem Ordner `/Users/kaan/RunningServer`. Wenn das Repository woanders liegt, den Pfad entsprechend anpassen. Die Befehle einzeln ausführen und bei einem Fehler zuerst dessen Ursache beheben.
+
+`--no-rebase` führt lokale und entfernte Commits bei Bedarf mit einem Merge zusammen. Dadurch ist die Pull-Strategie auch bei der Meldung **“You have divergent branches”** ausdrücklich festgelegt. Bei Merge-Konflikten die betroffenen Dateien bearbeiten, die Konfliktmarkierungen entfernen und die Auflösung mit `git add <Datei>` sowie `git commit` abschließen. Falls Git bereits einen offenen Merge meldet, diesen zuerst abschließen, bevor erneut gepullt wird.
+
+**Die Pull-Befehle immer im richtigen Repository ausführen:** `~/RunningServer` aktualisiert den Server. Der Unity-Projektordner `MarkerML2` ist ein separates Repository.
+
+### Server ohne Aktualisierung starten
+
+```bash
+cd ~/RunningServer
+npm start
+```
+
+Danach das Dashboard unter [http://localhost:8081/](http://localhost:8081/) öffnen. Das Terminal während des Betriebs offen lassen. **Ctrl+C** beendet den Server.
 
 ### Magic Leap per USB verbinden
 
-Bei angeschlossener und für USB-Debugging freigegebener Brille:
+Die Brille per USB anschließen, USB-Debugging freigeben und im Terminal ausführen:
 
 ```bash
 adb devices
 adb reverse tcp:8081 tcp:8081
 ```
 
-Danach MarkerML2 auf der Brille öffnen. Die App verwendet standardmäßig `ws://127.0.0.1:8081/ws`; die USB-Portweiterleitung verbindet diese Adresse mit dem Server auf dem Rechner. Nach einem Geräte-Neustart die Weiterleitung erneut einrichten.
+Danach MarkerML2 auf der Brille öffnen. Die App verwendet standardmäßig `ws://127.0.0.1:8081/ws`. Die Portweiterleitung verbindet diese Adresse auf der Brille mit dem Server auf dem Rechner. Nach einem Geräte-Neustart die Weiterleitung erneut einrichten.
 
-Für WLAN stattdessen die LAN-Adresse des Rechners in `Assets/Resources/RunnerServer.json` hinterlegen und die App neu bauen oder die geräteseitige `runner-server.json` verwenden. Weitere Details stehen in [Docs/RunningServer.md](Docs/RunningServer.md).
+Für WLAN die erreichbare LAN-Adresse des Rechners in `Assets/Resources/RunnerServer.json` hinterlegen und die App neu bauen. Alternativ kann eine `runner-server.json` im geräteseitigen `Application.persistentDataPath` die Adresse überschreiben. Details stehen in [Docs/RunningServer.md](Docs/RunningServer.md).
 
-Änderungen am Server-Dashboard werden nach einem Neustart beziehungsweise Neuladen der Webseite wirksam. Änderungen am Unity-C#-Code erfordern einen neuen App-Build auf der Brille.
+### Lauftraining beginnen
+
+1. RunningServer starten und Dashboard öffnen.
+2. Brille verbinden und MarkerML2 starten.
+3. Marker-Tracking und Spatial Mapping erlauben.
+4. Den konfigurierten AprilTag aus `Dictionary_36H11` mit 10 cm Kantenlänge auf den Boden legen und zusammen mit der umgebenden Bodenfläche erfassen.
+5. Nach bestätigter Platzierung erscheinen Bahn und Avatar automatisch. Der Lauf bleibt zunächst gestoppt.
+6. Im Dashboard Avatar-Modus, Zielpace und Nutzer-Geschwindigkeitsquelle konfigurieren und den Lauf ausdrücklich starten.
+
+Die Laufumgebung und der Avatar-Modus sind unabhängig:
+
+- **Laufband:** Die virtuelle Welt bewegt sich entsprechend dem Nutzertempo, während der Nutzer ungefähr am selben realen Ort bleibt.
+- **Stadion:** Die virtuelle Bahn bleibt fest; das Headtracking liefert den Nutzerfortschritt.
+- **SideBySide:** Der Begleiter bleibt auf Höhe des Nutzers beziehungsweise an einer gewählten relativen Position.
+- **TempoPartner:** Ein Ghost läuft mit eigener Zielpace, einem Bestzeitprofil oder einem separaten Testtempo.
+
+Die echte Laufbandgeschwindigkeits-Anbindung ist noch nicht implementiert. Zum Testen kann eine feste Nutzer-Geschwindigkeit gewählt werden. Das Projekt enthält außerdem ein eigenes BLE-Paket für Herzfrequenz und weitere Sensordaten.
+
+Unity-C#-Änderungen benötigen einen neuen App-Build auf der Brille. Ein Update des RunningServer aktualisiert die installierte Unity-App nicht.
 
 ## 2. Technische Grundlage
 
