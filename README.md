@@ -22,22 +22,7 @@ npm start
 
 Falls GitHub eine Anmeldung verlangt, ein Konto mit Zugriff auf das Repository verwenden.
 
-### Vorhandenen RunningServer aktualisieren und starten
 
-Einen bereits laufenden Server im zugehörigen Terminal mit **Ctrl+C** beenden. Anschließend in den Serverordner wechseln, den aktuellen Stand holen, Abhängigkeiten installieren und starten:
-
-```bash
-cd ~/RunningServer
-git pull --no-rebase origin main
-npm install
-npm start
-```
-
-Auf diesem Rechner entspricht `~/RunningServer` dem Ordner `/Users/kaan/RunningServer`. Wenn das Repository woanders liegt, den Pfad entsprechend anpassen. Die Befehle einzeln ausführen und bei einem Fehler zuerst dessen Ursache beheben.
-
-`--no-rebase` führt lokale und entfernte Commits bei Bedarf mit einem Merge zusammen. Dadurch ist die Pull-Strategie auch bei der Meldung **“You have divergent branches”** ausdrücklich festgelegt. Bei Merge-Konflikten die betroffenen Dateien bearbeiten, die Konfliktmarkierungen entfernen und die Auflösung mit `git add <Datei>` sowie `git commit` abschließen. Falls Git bereits einen offenen Merge meldet, diesen zuerst abschließen, bevor erneut gepullt wird.
-
-**Die Pull-Befehle immer im richtigen Repository ausführen:** `~/RunningServer` aktualisiert den Server. Der Unity-Projektordner `MarkerML2` ist ein separates Repository.
 
 ### Server ohne Aktualisierung starten
 
