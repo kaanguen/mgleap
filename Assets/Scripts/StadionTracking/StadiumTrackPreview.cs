@@ -3,10 +3,8 @@ using UnityEngine.Rendering;
 
 namespace StadionTracking
 {
-
     public sealed class StadiumTrackPreview : MonoBehaviour
     {
-
         private readonly StadiumTrackGeometry _geometry = new StadiumTrackGeometry();
         private StadiumRunProgress _run = new StadiumRunProgress();
         private float _animationSpeedFraction;
@@ -65,6 +63,23 @@ namespace StadionTracking
         private AvatarLocomotion _locomotion;
         private double _entryMetres;
 
+        private RunnerSession session;
+        private bool initialized;
+
+        private void OnEnable()
+        {
+            if (Application.isPlaying && initialized)
+            {
+                session = RunnerSession.GetOrCreate(this);
+                session.BindRunner(this);
+            }
+        }
+
+        private void OnDisable()
+        {
+            if (session != null) session.UnbindRunner(this);
+        }
+
         public int Lane { get; private set; }
 
         // Align the track to the spawn or known marker and create the route preview.
@@ -72,7 +87,6 @@ namespace StadionTracking
             Vector3 markerWorldPosition, Quaternion markerWorldRotation,
             StadiumPreviewSettings settings, out Vector3 entryGroundPosition)
         {
-
             entryGroundPosition = spawnGroundPosition;
             _settings = settings;
             PacingMode = settings.PacingMode;
@@ -86,7 +100,6 @@ namespace StadionTracking
                 markerWorldRotation * settings.MarkerLocalRunDirection, Vector3.up);
             if (worldDirection.sqrMagnitude < 0.0001f)
             {
-
                 Debug.LogWarning("[StadiumTracking] Marker heading is vertical/undefined. " +
                     "Set Marker Local Run Direction to a horizontal marker axis (floor tag: Up; wall tag: often Forward).");
                 return false;
@@ -101,7 +114,6 @@ namespace StadionTracking
             Vector3 anchor = spawnGroundPosition;
             if (settings.AnchorMode == StadiumAnchorMode.KnownMarkerPosition)
             {
-
                 anchor = new Vector3(markerWorldPosition.x, spawnGroundPosition.y, markerWorldPosition.z);
 
                 referencePoint += new Vector3(settings.MarkerOffsetFromReference.x, 0, settings.MarkerOffsetFromReference.y);
@@ -126,7 +138,6 @@ namespace StadionTracking
             entryGroundPosition = transform.TransformPoint(Position(_geometry.Evaluate(Lane, _entryMetres)));
             if (Vector3.Distance(entryGroundPosition, spawnGroundPosition) > Mathf.Max(0.1f, settings.MaxEntryCorrection))
             {
-
                 Debug.LogWarning("[StadiumTracking] Entry is too far from spawn. Check marker calibration or use AvatarSpawnPreview.");
                 return false;
             }
@@ -146,6 +157,12 @@ namespace StadionTracking
             _route = CreateLine("Lap route", material, settings.RouteColor, settings.LineWidth);
             _arrow = CreateLine("Running direction", material, settings.DirectionColor, settings.LineWidth * 1.5f);
             DrawRoute();
+            initialized = true;
+            if (Application.isPlaying && isActiveAndEnabled)
+            {
+                session = RunnerSession.GetOrCreate(this);
+                session.BindRunner(this);
+            }
             Debug.Log($"[StadiumTracking] {settings.AnchorMode}: lane {Lane}, " +
                 $"entry {_entryMetres:F2} m, lap {_geometry.Length(Lane):F3} m. " +
                 "Cyan = one full lap, yellow = running direction. Use the speed slider to start; zero pauses.");
@@ -155,7 +172,6 @@ namespace StadionTracking
         // Apply the current path heading and animation; the tracker sets the final position.
         public void AlignAvatar(Transform avatar, Animator animator, Vector3 groundPosition)
         {
-
             Vector3 position = transform.position;
             position.y = groundPosition.y;
             transform.position = position;
@@ -166,7 +182,6 @@ namespace StadionTracking
                 return;
             if (_animator != animator)
             {
-
                 _animator = animator;
                 _locomotion = new AvatarLocomotion(animator);
             }
@@ -186,7 +201,6 @@ namespace StadionTracking
         // Draw a complete lap from the entry point and a short direction arrow.
         private void DrawRoute()
         {
-
             const int segments = 800;
             _route.positionCount = segments + 1;
             for (int i = 0; i <= segments; i++)
@@ -233,7 +247,6 @@ namespace StadionTracking
 
         private void OnDestroy()
         {
-
             if (_ownedMaterial != null)
                 Destroy(_ownedMaterial);
         }

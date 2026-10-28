@@ -8,12 +8,39 @@ namespace StadionTracking
         /// <summary>World-space distance from the avatar root to its lowest visible mesh point.</summary>
         internal static float MeasureSoleOffset(GameObject avatar)
         {
-            if (TryGetLowestSkinnedPoint(avatar, out Vector3 point))
-                return point.y - avatar.transform.position.y;
-            float lowest = float.PositiveInfinity;
-            foreach (var renderer in avatar.GetComponentsInChildren<MeshRenderer>())
-                lowest = Mathf.Min(lowest, renderer.bounds.min.y);
-            return float.IsPositiveInfinity(lowest) ? 0f : lowest - avatar.transform.position.y;
+            return TryGetLowestPoint(avatar, out Vector3 point)
+                ? point.y - avatar.transform.position.y : 0f;
+        }
+
+        internal static bool TryGetLowestPoint(GameObject avatar, out Vector3 lowestPoint)
+        {
+            if (TryGetLowestSkinnedPoint(avatar, out lowestPoint)) return true;
+            float lowestHeight = float.PositiveInfinity;
+            bool found = false;
+            foreach (Renderer renderer in avatar.GetComponentsInChildren<Renderer>(true))
+            {
+                if (!(renderer is MeshRenderer) || renderer.GetComponentInParent<Canvas>() != null ||
+                    renderer.GetComponent<TMPro.TMP_Text>() != null)
+                    continue;
+                var filter = renderer.GetComponent<MeshFilter>();
+                if (filter == null || filter.sharedMesh == null)
+                    continue;
+                Bounds bounds = filter.sharedMesh.bounds;
+                for (int i = 0; i < 8; i++)
+                {
+                    Vector3 corner = bounds.center + Vector3.Scale(bounds.extents,
+                        new Vector3((i & 1) == 0 ? -1f : 1f, (i & 2) == 0 ? -1f : 1f,
+                            (i & 4) == 0 ? -1f : 1f));
+                    Vector3 point = renderer.transform.TransformPoint(corner);
+                    float height = point.y;
+                    if (height >= lowestHeight)
+                        continue;
+                    lowestHeight = height;
+                    lowestPoint = point;
+                    found = true;
+                }
+            }
+            return found;
         }
 
         internal static bool TryGetLowestSkinnedPoint(GameObject avatar, out Vector3 lowestPoint)

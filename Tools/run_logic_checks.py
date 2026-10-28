@@ -22,7 +22,7 @@ def main():
     names = (
         "StadiumTrackGeometry", "SimpleTrackMap", "StadiumRunProgress", "StadiumPacing",
         "StadiumCalibration", "FloorMarkerPlacement", "LocomotionTiming", "GhostTestMotion",
-        "RunnerSpeedInput", "LapCheckpointTracker", "LapGhostRecording", "RunnerCommandValues",
+        "RunnerSpeedInput", "RunnerPersonalBest", "LapCheckpointTracker", "LapGhostRecording", "RunnerCommandValues",
     )
     checks = sorted((root / "Tests/StadionTracking").glob("*Checks.cs"))
     json_dlls = sorted((root / "Library/PackageCache").glob(

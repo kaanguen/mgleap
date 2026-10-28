@@ -6,6 +6,13 @@ namespace StadionTracking
     /// <summary>Typed, bounded values accepted by the RunningServer command protocol.</summary>
     internal static class RunnerCommandValues
     {
+        internal static void RequireFields(JObject payload, string command, params string[] allowed)
+        {
+            foreach (var property in payload.Properties())
+                if (Array.IndexOf(allowed, property.Name) < 0)
+                    throw new ArgumentException("Unsupported " + command + " field: " + property.Name);
+        }
+
         internal static float Decimal(JObject p, string key, float fallback, float min, float max) =>
             ReadNumber(p, key, fallback, min, max, false);
 
@@ -29,5 +36,8 @@ namespace StadionTracking
             if (p[key]?.Type != JTokenType.Boolean) throw new ArgumentException(key + " must be a boolean.");
             return (bool)p[key];
         }
+
+        internal static bool Boolean(JObject p, string key, bool fallback) =>
+            p[key] == null ? fallback : Boolean(p, key);
     }
 }

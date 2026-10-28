@@ -1,4 +1,3 @@
-using System;
 using TMPro;
 using UnityEngine;
 
@@ -14,9 +13,9 @@ namespace StadionTracking
 
         public static RunnerServerSetup Create(RunnerServerClient client, string initialAddress, string error)
         {
-            var canvas = RunnerUiTheme.Panel("ServerSetupCanvas", 610);
+            var canvas = RunnerUiTheme.Panel("ServerSetupCanvas", 650);
             UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(canvas.gameObject, client.gameObject.scene);
-            canvas.GetComponent<RectTransform>().sizeDelta = new Vector2(580, 610);
+            canvas.GetComponent<RectTransform>().sizeDelta = new Vector2(580, 650);
             canvas.GetComponent<RunnerArPanel>().Priority = 100;
             var setup = canvas.gameObject.AddComponent<RunnerServerSetup>();
             setup.client = client;
@@ -55,8 +54,9 @@ namespace StadionTracking
             AddButton("Backspace", "ZURÜCK", 294, 420, 262, () => {
                 if (address.text.Length > 0) address.text = address.text.Substring(0, address.text.Length - 1);
             }, 44);
-            status = RunnerUiTheme.Text("Status", transform, "", 24, 472, 532, 60, 18);
-            connect = AddButton("Connect", "VERBINDEN", 24, 540, 532, Connect, 48);
+            status = RunnerUiTheme.Text("Status", transform, "", 24, 472, 532, 108, 17);
+            status.overflowMode = TextOverflowModes.Ellipsis;
+            connect = AddButton("Connect", "VERBINDEN", 24, 590, 532, Connect, 48);
             SetStatus(string.IsNullOrEmpty(error) ? "Adresse wird auf dieser Brille gespeichert." : error,
                 !string.IsNullOrEmpty(error));
         }
@@ -74,7 +74,7 @@ namespace StadionTracking
         private void Connect()
         {
             if (!client.ConnectToServer(address.text, out string error)) SetStatus(error, true);
-            else { connect.interactable = false; SetStatus("Verbindung wird aufgebaut …", false); }
+            else SetStatus("Verbinde mit " + client.ServerAddress + " …", false);
         }
 
         public void SetStatus(string message, bool error)
@@ -82,26 +82,8 @@ namespace StadionTracking
             gameObject.SetActive(true);
             status.text = message;
             status.color = error ? RunnerUiTheme.Warning : RunnerUiTheme.Label;
-            if (error) connect.interactable = true;
+            connect.interactable = true;
         }
 
-        public static bool TryNormalizeAddress(string value, out Uri uri)
-        {
-            uri = null;
-            value = (value ?? "").Trim();
-            if (value.Length == 0) return false;
-            if (!value.Contains("://")) value = "ws://" + value;
-            if (!Uri.TryCreate(value, UriKind.Absolute, out var parsed) ||
-                (parsed.Scheme != "ws" && parsed.Scheme != "wss") || string.IsNullOrEmpty(parsed.Host) ||
-                !string.IsNullOrEmpty(parsed.UserInfo) || !string.IsNullOrEmpty(parsed.Fragment)) return false;
-            var builder = new UriBuilder(parsed);
-            // Preserve explicitly supplied ports, including the standard ws/wss ports.
-            string authority = value.Substring(value.IndexOf("://", StringComparison.Ordinal) + 3).Split('/', '?')[0];
-            bool explicitPort = authority.StartsWith("[") ? authority.Contains("]:") : authority.Contains(":");
-            if (!explicitPort) builder.Port = 8081;
-            if (parsed.AbsolutePath == "/") builder.Path = "/ws";
-            uri = builder.Uri;
-            return true;
-        }
     }
 }

@@ -34,9 +34,9 @@ namespace StadionTracking
         public string PlaybackMode => TestSpeedEnabled ? "TestSpeed" : HasRecordedLap ? "RecordedLap" : "TargetPace";
         public bool IsPartnerActive { get; private set; }
 
-        // Called by ActiveStatsDisplay after it updates the common clock and checkpoint tracker.
+        // Called by the scene session after updating the common clock and checkpoint tracker.
         public void Synchronize(LapCheckpointTracker tracker, StadiumTrackPreview runner,
-            StraightTreadmillWorld world, bool clockRunning)
+            StraightTreadmillWorld world, bool clockRunning, TreadmillCompanion activeCompanion = null, float? deltaSeconds = null)
         {
             HasRecordedLap = tracker != null && tracker.GhostRecording.HasRecording;
             UnityEngine.Object activeSource = runner != null ? (UnityEngine.Object)runner : world;
@@ -45,16 +45,12 @@ namespace StadionTracking
                 ReleaseAvatar();
                 source = activeSource;
                 ResetTestPosition();
-                companion = null;
+                companion = activeCompanion;
+                // Compatibility for callers that synchronize a standalone playback directly.
+                if (world != null && companion == null) companion = world.GetComponent<TreadmillCompanion>();
             }
+            if (activeCompanion != null) companion = activeCompanion;
             bool ready = runner != null || (world != null && world.PlacementReady && world.HeightConfirmed);
-            if (world != null && companion == null)
-            {
-                companion = world.GetComponent<TreadmillCompanion>();
-                if (companion == null)
-                    foreach (var candidate in FindObjectsOfType<TreadmillCompanion>())
-                        if (candidate.World == world) { companion = candidate; break; }
-            }
             bool partnerMode = runner != null ? RunnerSessionSettings.Mode == TreadmillRunMode.TempoPartner :
                 companion != null && companion.isActiveAndEnabled && companion.Mode == TreadmillRunMode.TempoPartner;
             IsPartnerActive = showGhost && ready && tracker != null && isActiveAndEnabled && partnerMode;
@@ -73,11 +69,13 @@ namespace StadionTracking
                     // The same avatar is never displayed as a side companion and a tempo partner.
                     companion.Synchronize();
                 }
-                if (prefab == null || !Spawn(prefab)) { IsPartnerActive = false; CurrentSpeedKmh = 0; return; }
+                if (prefab == null) { IsPartnerActive = false; CurrentSpeedKmh = 0; return; }
+                Spawn(prefab);
             }
 
+            float deltaTime = deltaSeconds ?? Time.deltaTime;
             // The avatar owns its lap clock; a standing user or missing belt signal cannot hold it at the finish.
-            if (clockRunning) normalElapsedSeconds += Time.deltaTime;
+            if (clockRunning) normalElapsedSeconds += deltaTime;
             tracker.GhostRecording.EvaluateContinuous(normalElapsedSeconds, tracker.LapLengthMetres,
                 tracker.BestLapSeconds, out double normalDistance, out double speed);
             double distance = normalDistance % tracker.LapLengthMetres;
@@ -86,7 +84,7 @@ namespace StadionTracking
             if (testMotion.Enabled)
             {
                 // Test speed is actual speed on the selected lane, including outer bends.
-                testMotion.Advance(Time.deltaTime / laneSpeedScale, clockRunning);
+                testMotion.Advance(deltaTime / laneSpeedScale, clockRunning);
                 TravelledMetres = testMotion.Distance;
                 distance = TravelledMetres % tracker.LapLengthMetres;
                 speed = testMotion.SpeedKmh / 3.6 / laneSpeedScale;
@@ -119,7 +117,7 @@ namespace StadionTracking
             Animate((float)(CurrentSpeedKmh / 3.6));
         }
 
-        private bool Spawn(GameObject prefab)
+        private void Spawn(GameObject prefab)
         {
             // An independent world root prevents inheriting the HUD's tiny scale or moving scenery.
             holder = new GameObject("Tempo Partner");
@@ -140,15 +138,9 @@ namespace StadionTracking
             animator = avatar.GetComponentInChildren<Animator>(true);
             holder.SetActive(true);
             if (animator != null)
-            {
-                animator.applyRootMotion = false;
-                animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
                 animator.updateMode = AnimatorUpdateMode.Normal;
-                locomotion = new AvatarLocomotion(animator);
-                animator.Update(0);
-            }
+            locomotion = AvatarLocomotion.Initialize(animator);
             soleOffset = AvatarGrounding.MeasureSoleOffset(avatar);
-            return true;
         }
 
         private void Animate(float speed)
@@ -170,14 +162,17 @@ namespace StadionTracking
             Dispose(holder);
             holder = avatar = null;
             animator = null;
+            locomotion = null;
         }
 
-        private void OnDisable()
+        internal void Suspend()
         {
             IsPartnerActive = false;
             CurrentSpeedKmh = 0;
             if (holder != null) holder.SetActive(false);
         }
+
+        private void OnDisable() => Suspend();
         private void OnDestroy() => ReleaseAvatar();
     }
 }

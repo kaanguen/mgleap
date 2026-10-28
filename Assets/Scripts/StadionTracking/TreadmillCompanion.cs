@@ -80,7 +80,7 @@ namespace StadionTracking
         {
             if (UseSelectedLane || world.RealTrackMode)
             {
-                world.GetLanePoseAtDistance(world.RealTrackMode ? world.UserTrackPositionMetres - world.RaceStartTrackMetres : world.TravelledMetres,
+                world.GetLanePoseAtDistance(world.UserDistanceAlongTrack,
                     world.AvatarLane, out position, out rotation);
                 return;
             }
@@ -96,6 +96,15 @@ namespace StadionTracking
                     rotation = Quaternion.LookRotation(towardUser, Vector3.up) * Quaternion.Euler(0, yaw, 0);
                 }
             }
+        }
+
+        private RunnerSession session;
+
+        private void OnEnable()
+        {
+            if (!Application.isPlaying) return;
+            session = RunnerSession.GetOrCreate(this);
+            session.BindCompanion(this);
         }
 
         private void LateUpdate() => Synchronize();
@@ -123,7 +132,7 @@ namespace StadionTracking
             GetGroundPose(out Vector3 ground, out Quaternion heading);
             avatar.transform.SetPositionAndRotation(ground - Vector3.up * soleOffset, heading);
             AppliedSpeedMetresPerSecond = world.SessionPaused ? 0f : (1000f / Mathf.Max(1, RunnerSessionSettings.PaceSeconds)) *
-                (UseSelectedLane || world.RealTrackMode ? (float)world.AvatarLaneSpeedScale(world.RealTrackMode ? world.UserTrackPositionMetres - world.RaceStartTrackMetres : world.TravelledMetres) : 1);
+                (UseSelectedLane || world.RealTrackMode ? (float)world.AvatarLaneSpeedScale(world.UserDistanceAlongTrack) : 1);
             if (animator == null) return;
             float rate = locomotion.Apply(AppliedSpeedMetresPerSecond);
             if (!locomotion.HasPlaybackRate) animator.speed = AppliedSpeedMetresPerSecond > 0f ? rate : 1f;
@@ -136,19 +145,14 @@ namespace StadionTracking
             avatar.name = "Running companion";
             AvatarVisibility.Configure(avatar);
             animator = avatar.GetComponentInChildren<Animator>();
-            if (animator != null)
-            {
-                animator.applyRootMotion = false;
-                animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
-                locomotion = new AvatarLocomotion(animator);
-                animator.Update(0f);
-            }
+            locomotion = AvatarLocomotion.Initialize(animator);
             soleOffset = AvatarGrounding.MeasureSoleOffset(avatar);
             Debug.Log($"[Treadmill] Avatar spawned in {runMode} mode; shares the configured treadmill pace.");
         }
 
         private void OnDisable()
         {
+            if (session != null) session.UnbindCompanion(this);
             if (avatar != null) avatar.SetActive(false);
         }
 

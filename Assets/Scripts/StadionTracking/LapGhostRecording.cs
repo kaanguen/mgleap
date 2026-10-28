@@ -20,6 +20,37 @@ namespace StadionTracking
         public bool HasRecording => best != null;
         public int BestSampleCount => best == null ? 0 : best.Length;
 
+        public void ExportBest(out double[] times, out double[] distances)
+        {
+            times = distances = null;
+            if (best == null) return;
+            times = new double[best.Length];
+            distances = new double[best.Length];
+            for (int i = 0; i < best.Length; i++) { times[i] = best[i].Time; distances[i] = best[i].Distance; }
+        }
+
+        public bool TryRestoreBest(double[] times, double[] distances, double lapLength, double lapSeconds)
+        {
+            if (times == null && distances == null) { best = null; return true; }
+            if (lapLength <= 0 || lapSeconds <= 0 || double.IsNaN(lapLength) || double.IsInfinity(lapLength) ||
+                double.IsNaN(lapSeconds) || double.IsInfinity(lapSeconds)) return false;
+            if (times == null || distances == null || times.Length != distances.Length || times.Length < 2 || times.Length > 100000)
+                return false;
+            var restored = new Sample[times.Length];
+            for (int i = 0; i < times.Length; i++)
+            {
+                if (double.IsNaN(times[i]) || double.IsInfinity(times[i]) || double.IsNaN(distances[i]) || double.IsInfinity(distances[i]) ||
+                    times[i] < 0 || distances[i] < 0 || distances[i] > lapLength + .001 ||
+                    (i > 0 && (times[i] <= times[i - 1] || distances[i] < distances[i - 1]))) return false;
+                restored[i] = new Sample(times[i], distances[i]);
+            }
+            int last = times.Length - 1;
+            if (Math.Abs(times[0]) > .000001 || Math.Abs(distances[0]) > .000001 ||
+                Math.Abs(times[last] - lapSeconds) > .001 || Math.Abs(distances[last] - lapLength) > .001) return false;
+            best = restored;
+            return true;
+        }
+
         internal void Begin(double distance, double time, bool isCompleteLap)
         {
             startDistance = distance;

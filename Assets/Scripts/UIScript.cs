@@ -62,8 +62,7 @@ public class UIScript : MonoBehaviour
         runner = newRunner;
         hadRunner = runner != null;
         avatar = newAvatar;
-        hasSpeedParameter = avatar != null && HasParameter(avatar, speedParameter, AnimatorControllerParameterType.Float);
-        hasRunningParameter = avatar != null && HasParameter(avatar, runningParameter, AnimatorControllerParameterType.Bool);
+        CacheAnimatorParameters();
         if (slider == null && uiPanel != null)
             slider = uiPanel.GetComponentInChildren<UnityEngine.UI.Slider>(true);
         if (slider != null)
@@ -119,6 +118,7 @@ public class UIScript : MonoBehaviour
         ConfigurePacingSlider();
         EnsurePacingControls();
         RefreshPacingControls();
+        CacheAnimatorParameters();
         UpdateAnimation(slider.value);
         ConnectRunnerMap();
 
@@ -126,9 +126,9 @@ public class UIScript : MonoBehaviour
         {
             avatar.applyRootMotion = false;
 
-            if (!HasParameter(avatar, speedParameter, AnimatorControllerParameterType.Float))
+            if (!hasSpeedParameter)
                 Debug.LogError($"[UIScript] Animator float parameter '{speedParameter}' is missing.");
-            if (!HasParameter(avatar, runningParameter, AnimatorControllerParameterType.Bool))
+            if (!hasRunningParameter)
                 Debug.LogError($"[UIScript] Animator bool parameter '{runningParameter}' is missing.");
         }
     }
@@ -329,6 +329,12 @@ public class UIScript : MonoBehaviour
         }
         if (runnerMap != null)
             runnerMap.BindRunner(runner);
+    }
+
+    private void CacheAnimatorParameters()
+    {
+        hasSpeedParameter = avatar != null && HasParameter(avatar, speedParameter, AnimatorControllerParameterType.Float);
+        hasRunningParameter = avatar != null && HasParameter(avatar, runningParameter, AnimatorControllerParameterType.Bool);
     }
 
     private static bool HasParameter(

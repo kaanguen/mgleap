@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using StadionTracking;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -123,17 +122,10 @@ internal static class StraightTreadmillSetup
 
     private static Mesh CreateTile()
     {
-        var vertices = new List<Vector3>();
-        var colors = new List<Color>();
-        var indices = new List<int>();
-        void Quad(float x0, float x1, float z0, float z1, float y, Color color)
-        {
-            int n = vertices.Count;
-            vertices.Add(new Vector3(x0, y, z0)); vertices.Add(new Vector3(x0, y, z1));
-            vertices.Add(new Vector3(x1, y, z1)); vertices.Add(new Vector3(x1, y, z0));
-            for (int j = 0; j < 4; j++) colors.Add(color);
-            indices.AddRange(new[] { n, n + 1, n + 2, n, n + 2, n + 3 });
-        }
+        var builder = new TrackMeshBuilder();
+        void Quad(float x0, float x1, float z0, float z1, float y, Color color) =>
+            builder.AddQuad(new Vector3(x0, y, z0), new Vector3(x0, y, z1),
+                new Vector3(x1, y, z1), new Vector3(x1, y, z0), color);
 
         // Three 1.22 m lanes at real scale; the viewer starts at the middle lane's centre.
         for (int lane = 0; lane <= 3; lane++)
@@ -149,10 +141,7 @@ internal static class StraightTreadmillSetup
             Quad(-1.8f, -1.5f, z, z + 0.08f, 0.006f, Color.yellow);
             Quad(1.5f, 1.8f, z, z + 0.08f, 0.006f, Color.yellow);
         }
-        var mesh = new Mesh { name = "Straight track 20m" };
-        mesh.SetVertices(vertices); mesh.SetColors(colors); mesh.SetTriangles(indices, 0);
-        mesh.RecalculateNormals(); mesh.RecalculateBounds();
-        return mesh;
+        return builder.CreateMesh("Straight track 20m");
     }
 
     [MenuItem("Tools/Treadmill/Verify motion")]

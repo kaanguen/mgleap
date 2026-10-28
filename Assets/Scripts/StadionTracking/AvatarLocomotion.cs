@@ -14,6 +14,15 @@ namespace StadionTracking
 
         internal bool HasPlaybackRate { get; }
 
+        internal static AvatarLocomotion Initialize(Animator animator)
+        {
+            if (animator == null) return null;
+            animator.applyRootMotion = false;
+            var locomotion = new AvatarLocomotion(animator);
+            animator.Update(0f);
+            return locomotion;
+        }
+
         internal AvatarLocomotion(Animator animator)
         {
             this.animator = animator;

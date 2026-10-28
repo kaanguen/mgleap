@@ -126,12 +126,14 @@ flowchart TD
     Speed[RunnerSpeedInput] -->|Nutzertempo| World
     Geometry[StadiumTrackGeometry] --> World
     World --> Companion[TreadmillCompanion: SideBySide]
-    World --> Stats[ActiveStatsDisplay]
-    Stats --> Checkpoints[LapCheckpointTracker]
+    World --> Session[RunnerSession]
+    Session --> Stats[ActiveStatsDisplay]
+    Session --> Checkpoints[LapCheckpointTracker]
     Checkpoints --> Recording[LapGhostRecording]
     Recording --> Playback[LapGhostPlayback: TempoPartner]
     World --> Playback
-    Stats --> Client
+    Session --> Playback
+    Session --> Client
     Playback --> Client
     BLE[BleConnection und GATT] --> Measurements[SensorMeasurements]
     Measurements --> SensorUI[HeartRateUI]
@@ -140,7 +142,7 @@ flowchart TD
 
 Die Architektur ist komponentenbasiert. Unity-`MonoBehaviour`-Komponenten verbinden Szene, Gerätefunktionen und Darstellung. Reine C#-Klassen übernehmen Geometrie, Geschwindigkeitswahl, Checkpoints und Ghost-Daten, sodass sich diese Logik auch ohne laufende Unity-Szene prüfen lässt.
 
-`StraightTreadmillWorld` ist die zentrale Laufwelt-Komponente. `RunnerServerClient` verbindet die Fernsteuerung mit dieser Welt. `ActiveStatsDisplay` übernimmt neben der Anzeige auch die Session-Uhr, Checkpoint-Auswertung und Synchronisation der Ghost-Wiedergabe. Das HUD ist daher derzeit auch Teil der Lauf- und Ghost-Logik.
+`StraightTreadmillWorld` ist die zentrale Laufwelt-Komponente. `RunnerServerClient` verbindet die Fernsteuerung mit dieser Welt. `RunnerSession` besitzt unabhängig vom HUD die Session-Uhr, Checkpoint-Auswertung und Ghost-Synchronisation. `ActiveStatsDisplay` zeigt diese Daten an; auch bei deaktiviertem HUD läuft die Session weiter. Die Quellen registrieren sich direkt statt pro Frame in der Szene gesucht zu werden.
 
 ### 4.1 Ablauf beim Start
 
@@ -222,12 +224,16 @@ Die folgenden Tabellen decken alle eigenen C#-Skripte unter `Assets/Scripts` ab.
 | `AvatarLocomotion.cs` | Gemeinsame Erkennung der Animator-Parameter, Kalibrierung der Gangarten und Anwendung der Animationswerte für Begleiter, Ghost und Vorschau. Die Aufrufer bestimmen weiterhin selbst, ob die Animation bei Pause einfriert oder in Idle übergeht. |
 | `AvatarGrounding.cs` | Gemeinsame Messung des tiefsten Skinned-Mesh-Punkts und des Sohlenversatzes. Der Marker-Läufer behält seinen eigenen Fallback für statische Meshes. |
 | `LapCheckpointTracker.cs` | Wertet mit `Update(distance, elapsed)` 100-m-Checkpoints, Runden und Kilometer aus. Interpoliert Grenzübertritte zwischen Updates, verwaltet Vergleichszeiten und tatsächlich gemessene Rekorde und versorgt `GhostRecording`. Ziel-/Beispielwerte sind von gemessenen Rekorden getrennt. |
-| `LapGhostRecording.cs` | Speichert Zeit-/Distanzpunkte einer vollständigen Runde und übernimmt ein geeignetes neues Bestprofil. `Begin(...)`, `Record(...)`, `Finish(...)` werden vom Tracker genutzt; normale Samples sind auf ungefähr 10 Hz begrenzt. `Evaluate(...)` interpoliert innerhalb einer Runde, `EvaluateContinuous(...)` spielt Runden fortlaufend ab. Daten bleiben im Arbeitsspeicher. |
+| `LapGhostRecording.cs` | Speichert Zeit-/Distanzpunkte einer vollständigen Runde und übernimmt ein geeignetes neues Bestprofil. `Begin(...)`, `Record(...)`, `Finish(...)` werden vom Tracker genutzt; normale Samples sind auf ungefähr 10 Hz begrenzt. `Evaluate(...)` interpoliert innerhalb einer Runde, `EvaluateContinuous(...)` spielt Runden fortlaufend ab. Bestprofil und Ghost-Samples werden zusätzlich durch `RunnerRecordsStore` dauerhaft gespeichert. |
 | `LapGhostPlayback.cs` | Erzeugt und animiert den TempoPartner-Avatar. `Synchronize(...)` verbindet Session-Uhr, Bestprofil und Weltpose; `SetTestSpeed(...)` aktiviert/deaktiviert das separate Ghost-Testtempo; `ResetTestPosition()` setzt dessen Fortschritt zurück. Misst den Sohlenversatz und räumt erzeugte Avatarobjekte auf. |
 | `GhostTestMotion.cs` | Reiner Testtempo-Integrator. `SetSpeed(...)` übernimmt ein optionales Tempo und die aktuelle Distanz; `Advance(...)` bewegt nur bei laufender Session; `Reset()` setzt die Distanz zurück. |
-| `ActiveStatsDisplay.cs` | Betreibt HUD, Session-Uhr, Checkpoint-Tracker und Ghost-Synchronisation. `ResetSessionStats()` löscht Zeit/Rekorde/Aufnahme; `BindRunner(...)` bindet den Vorschaupfad; `LateUpdate()` ermittelt die aktive Welt, aktualisiert Uhr und Distanz und ruft die Ghost-Wiedergabe auf. Formatiert Pace, Zeit und Checkpointvergleich. |
+| `RunnerSession.cs` | Eigenes Szenenobjekt für Session-Uhr, Checkpoints, Rekorde und Ghost. Verarbeitet direkt gebundene Laufquellen unabhängig von HUD und Kamera; Pause, Reset und Quellenwechsel werden hier ausgewertet. |
+| `RunnerRecordsStore.cs`, `RunnerPersonalBest.cs` | Gespeicherte persönliche Bestleistungen und Ghost-Samples laden, validieren und ausschließlich durch bessere Werte ersetzen. |
+| `RunnerRecordPersistence.cs` | Gemeinsame Hintergrundwarteschlange für Dateizugriffe mit automatischer Wiederholung fehlgeschlagener Schreibaufträge. Ausstehende Daten bleiben bei Sessionwechseln erhalten. |
+| `RunnerSessionState.cs` | Typisierte Session-/Trackingzustände und lesbare Trackingmeldungen. Das Serverprotokoll behält die bisherigen Zustandstexte. |
+| `ActiveStatsDisplay.cs` | Formatiert Pace, Zeit und Checkpointvergleich aus der Session. Die bisherigen Methoden `ResetSessionStats()`, `RefreshTargetPace()` und `BindRunner(...)` delegieren zur unabhängigen Session. |
 
-Ein vollständiger 100-m-/400-m-/1-km-Abschnitt ist für einen gemessenen Rekord erforderlich. Die erste vollständige Runde wird zum Ghost-Profil, auch wenn sie langsamer als die Zielpace ist. Ohne vollständige Aufnahme verwendet der Ghost die Zielpace. Pace-, Modus- und Sichtbarkeitsänderungen erhalten Zeit, Distanz, Rekorde und Ghost-Aufnahme und pausieren den Lauf. Nur explizites Zurücksetzen, Umgebungswechsel und App-Neustart beginnen eine neue Rekorderfassung.
+Ein vollständiger 100-m-/400-m-/1-km-Abschnitt ist für einen gemessenen Rekord erforderlich. Die erste vollständige Runde wird zum Ghost-Profil, auch wenn sie langsamer als die Zielpace ist. Ohne vollständige Aufnahme verwendet der Ghost die Zielpace. Pace-, Modus- und Sichtbarkeitsänderungen erhalten Zeit, Distanz, Rekorde und Ghost-Aufnahme und pausieren den Lauf. Explizites Zurücksetzen, Umgebungswechsel und App-Neustart beginnen einen neuen Lauf; gespeicherte persönliche Bestleistungen bleiben erhalten und werden für die passende Umgebung geladen.
 
 ### 5.5 Oberfläche und lokale Navigation
 
@@ -241,9 +247,14 @@ Ein vollständiger 100-m-/400-m-/1-km-Abschnitt ist für einen gemessenen Rekord
 
 ### 5.6 Netzwerk
 
+Die Aufteilung des Codes und die erhaltenen Kompatibilitätspfade sind in [Docs/CodeStructure.md](Docs/CodeStructure.md) beschrieben.
+
 | Skript | Aufgabe und wichtige Funktionen |
 | --- | --- |
-| `RunnerServerClient.cs` | Installiert und initialisiert die Serverbrücke, bindet Laufwelt/Tracker/HUD/Begleiter, liest die Serverkonfiguration und hält die WebSocket-Verbindung. `ConnectLoop(...)` verbindet mit wachsender Wartezeit erneut; `Receive(...)` liest Nachrichten. Thread-sichere Queues übergeben Nachrichten an `Update()`, sodass Unity-Aktionen auf dem Hauptthread laufen. `Handle(...)` verarbeitet Nachrichten und Bestätigungen; `Apply(...)` führt die unterstützten Befehle aus; `SpawnOnStartLane()` setzt den Startavatar auf Bahn 3. Sendet Registry, Telemetrie und ACKs und pausiert bei Verbindungsabbruch. |
+| `RunnerServerClient.cs` | Initialisiert die Unity-Serverbrücke und verarbeitet Verbindungsereignisse auf dem Hauptthread. Zeigt zuerst den Adressdialog; pausiert bei Trennung. Die Teilklassen `RunnerServerClient.Commands.cs` und `RunnerServerClient.Telemetry.cs` enthalten Befehle/ACKs und die Telemetrie. |
+| `RunnerServerConnection.cs` | WebSocket-Aufbau mit festem Handshake-Timeout, Retry, typisierte Statusereignisse, konkrete Fehlerdiagnose und Abbruch. Jede Verbindung besitzt eigene Queues, damit ein Adresswechsel keine Nachrichten alter Verbindungsversuche übernimmt. |
+| `RunnerServerConfiguration.cs` | Lädt die gebündelte Adresse und das Geräte-Override, normalisiert IP-/WebSocket-Adressen und speichert die Eingabe. |
+| `RunnerServerSetup.cs` | Startdialog mit Adressfeld, Zahlenfeld und Verbinden-Button; bleibt bei Fehlern zur Korrektur offen. |
 | `RunnerCommandValues.cs` | Unity-unabhängige Validierung numerischer und boolescher Befehlswerte mit Typ- und Bereichsprüfung. |
 
 ## 6. Serversteuerung und Zustände
@@ -263,7 +274,7 @@ Nach dem Verbindungsaufbau sendet Unity `hello` mit Rolle `headset` und anschlie
 | `scene.rescanMarker` | Neue Marker-/Bodenplatzierung anfordern |
 | `scene.captureTrackPoint` | Stadionreferenz A/B erfassen |
 | `runningMate.adjust` | Absolute Feinverschiebung/Drehung oder Rücksetzen der Feinversätze |
-| `avatar.configurePlacement`, `avatar.reposition` | Relative SideBySide-Platzierung beziehungsweise erneute Blickausrichtung |
+| `avatar.configurePlacement`, `avatar.reposition` | Relative SideBySide-Platzierung beziehungsweise Rückkehr zum Markeranker auf der Boden-Plane |
 | `scene.setRunningMatePathVisible` | Bahn ein-/ausblenden |
 | `scene.setRunningMateHudVisible`, `scene.setHudVisible` | HUD ein-/ausblenden |
 | `sensor.connect`, `sensor.disconnect` | Vorhandene BLE-Verbindung bedienen; kein neuer Scan durch diese Befehle |
@@ -272,7 +283,7 @@ Kompatibilitätswege für Körperhöhe und manuelle Höhenkorrektur bleiben im C
 
 Der Client meldet `Stopped`, `Ready`, `Running` oder `Paused`. Sichtbarer Avatar und laufende Session sind getrennte Zustände. `start`/`spawn` setzen Bahn 3, `resume` erhält die später gewählte Bahn. Ein Verbindungsabbruch pausiert; ein Wiederverbinden startet nicht automatisch weiter.
 
-Telemetrie enthält Nutzerdistanz, Zeit, Tempo, Runden, Umgebung, gewählte Quelle, Marker-/Kalibrierungsstatus, Avatar-Bahn, Ghost-Daten und Rekorde. Die Laufdaten stehen unter `data.treadmill` sowie kompatibel unter `data.runningMate`; hinzu kommen BLE-Verbindungsstatus und HUD-Sichtbarkeit.
+Telemetrie enthält Nutzerdistanz, Zeit, Tempo, Runden, Umgebung, gewählte Quelle, Marker-/Kalibrierungsstatus, Trackingzustand, Avatar-Bahn, Ghost-Daten und Rekorde. `recordsStatus` enthält gegebenenfalls einen Lade-/Speicherfehler. Die Laufdaten stehen unter `data.treadmill` sowie kompatibel unter `data.runningMate`; hinzu kommen BLE-Verbindungsstatus und HUD-Sichtbarkeit.
 
 ## 7. BLE-Sensorarchitektur und Skripte
 
@@ -382,7 +393,8 @@ Das Werkzeug wählt einen gemeinsamen Einstiegspunkt, kompiliert in einem tempor
 | Serveradresse im Build | `Assets/Resources/RunnerServer.json` |
 | Optionale Serverüberschreibung | `Application.persistentDataPath/runner-server.json` auf dem Gerät |
 | Pace/Modus und Menüübergabe | Statische `RunnerSessionSettings` im laufenden Prozess |
-| Zeit, Distanz, Rekorde, Ghost-Samples | Laufzeitobjekte der aktuellen Unity-Session; kein dauerhafter Bestzeit-Speicher |
+| Zeit, Distanz und laufende Aufnahme | Laufzeitobjekte der aktuellen Session |
+| Persönliche Bestzeiten und Ghost der besten Runde | Versionierte JSON-Dateien in `Application.persistentDataPath/runner-records/`, getrennt nach Umgebung; temporärer Schreibpfad und `.bak`-Sicherung |
 | AR-Platzierung | Aktuelle XR-Session; kein dauerhafter räumlicher Anker über Neustarts |
 | BLE-Profile | ScriptableObject-Assets im Projekt |
 | Dashboard-Entwurf | Laut vorhandener Serverdokumentation lokal im Browser; getrennt von der angewendeten Unity-Konfiguration |
@@ -409,7 +421,7 @@ Server-Session, Serveraufnahme und Unity-Lauf sind getrennte Abläufe. Eine gest
 | Nutzer-Testtempo oder Laufbandsignal | `RunnerSpeedInput.cs`, Geschwindigkeits-API der Welt |
 | SideBySide-Position und Animation | `TreadmillCompanion.cs`, `LocomotionTiming.cs` |
 | Ghost-Pace, Profilwiedergabe oder Testtempo | `LapGhostPlayback.cs`, `LapGhostRecording.cs`, `GhostTestMotion.cs` |
-| Rekorde, Zwischenzeiten oder Uhr | `LapCheckpointTracker.cs`, `ActiveStatsDisplay.cs` |
+| Rekorde, Zwischenzeiten oder Uhr | `LapCheckpointTracker.cs`, `RunnerSession.cs` |
 | Fernsteuerungsbefehl oder Telemetrie | `RunnerServerClient.cs`, `Docs/RunningServer.md`, zusätzlich separates Serverprojekt |
 | HUD-Gestaltung | `RunnerUiTheme.cs`, `RunnerArPanel.cs`, `RunnerGlassGraphic.cs`, HUD-Prefab |
 | Hand-Ray oder Pinch | `Gestures.cs`, Input-Action-Assets und XR-Interactor der Szene |

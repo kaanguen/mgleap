@@ -51,6 +51,8 @@ HTTP 202 mit `commandId` bedeutet nur, dass der Server den Befehl zur Weiterleit
 
 Bei Fehlern: `success: false` und `error`. Fehlende Bestätigungen laufen nach zehn Sekunden ab. Ohne verbundene Brille liefert `/api/command` HTTP 503. Das Dashboard zeigt Befehle und Bestätigungen im Log. Es deaktiviert Funktionen, die der Client nicht in seiner Registry meldet.
 
+`type`, `commandId` und `commandType` müssen nicht leere Strings sein. `commandPayload` darf ein Objekt sein, fehlen oder null sein. Nachrichten ohne gültigen Typ oder gültige Befehls-ID werden verworfen; bei gültiger ID werden ungültige Befehlsfelder mit `success: false` bestätigt. Sie unterbrechen die Verarbeitung nachfolgender Nachrichten nicht.
+
 ## Unterstützte Befehle
 
 | Befehl | Payload / Wirkung |
@@ -65,17 +67,23 @@ Bei Fehlern: `success: false` und `error`. Fehlende Bestätigungen laufen nach z
 | `scene.captureTrackPoint` | `point: "A"` oder `"B"`; bei B optional `distanceAlongTrack` (5–100 m, Standard 20). |
 | `runningMate.adjust` | Absolute `along`, `across` (je ±100 m), `heading` (±180°) oder `reset: true`. Werte relativ zur letzten Grundkalibrierung. |
 | `avatar.configurePlacement` | Nur SideBySide in der Laufbandumgebung: `position` (N/NE/E/SE/S/SW/W/NW), `facing` (FaceUser/BackToUser/LeftShoulder/RightShoulder), `distance` (0,5–20 m). |
-| `avatar.reposition` | `{}`. Blickausrichtung auf der bereits erkannten Bodenreferenz; im Stadionmodus A/B verwenden. |
+| `avatar.reposition` | `{}`. Bei Marker-Platzierung zur gespeicherten Markerposition und -richtung auf der aktuellen Boden-Plane zurückkehren; keine Ausrichtung an der Kopfposition. Im Stadionmodus A/B verwenden. |
 | `scene.setRunningMatePathVisible` | `visible` (Boolean). Blendet die Bahn ein/aus. |
 | `scene.setRunningMateHudVisible` | `visible` (Boolean). Blendet das Headset-HUD ein/aus. |
 | `scene.setHudVisible` | `id: "stadium"`, `visible` (Boolean). |
 | `sensor.connect` / `sensor.disconnect` | Vorhandene BLE-Komponente verwenden. Verbinden verlangt bereits entdeckte Geräte. Keine automatische neue BLE-Suche über diese Befehle. |
 
-Kompatibilitätsbefehle bleiben im Code: `heightCm` bei `runningMate.configure`, `scene.recalibrate` mit `includeHeight` und `scene.adjustHeight` mit `deltaMetres`. Sie sind kein Bestandteil der aktuellen manuellen Höhenbedienung im Dashboard. Die Marker-/Plane-Platzierung verwendet keine Körpergrößenhöhe.
+Kompatibilitätsbefehle bleiben im Code: `heightCm` bei `runningMate.configure`, `scene.recalibrate` mit `includeHeight` und `scene.adjustHeight` mit `deltaMetres`. Bei Marker-/Plane-Platzierung bestimmt ausschließlich die erkannte Boden-Plane die Höhe; manuelle Höhenänderungen werden abgewiesen. Eine erneute Ausrichtung verwendet den gespeicherten Markeranker. Die Körpergröße beeinflusst die Marker-Platzierung nicht.
 
 Kalibrierungs-, Platzierungs- und Bahnauswahlbefehle verlangen eine pausierte und gültig platzierte Session. Das Dashboard pausiert dafür vorab und wartet auf die Bestätigung. Geschwindigkeitsquellen- und Ghost-Tempoänderungen pausieren den laufenden Avatar dagegen nicht. Explizite Pause, Stoppen und Verbindungsabbruch frieren die Session ein.
 
 Die Serverfamilien `avatar.*`, `scene.*`, `exercise.*`, `runningMate.*`, `sensor.*` sind ein Envelope-Filter. Daraus folgt keine Unterstützung aller generischen Avatar-/Übungsfunktionen. Die Unity-Registry und Handler sind maßgeblich.
+
+## Verbindungs- und Trackingdiagnose
+
+Der Startdialog zeigt die Zieladresse sowie Zeitüberschreitungen, abgelehnte Verbindungen und nicht erreichbare Hosts. Die Adresse bleibt während eines Versuchs editierbar; erneutes Verbinden bricht den vorherigen Versuch ab. Ein WebSocket-Handshake wird spätestens nach fünf Sekunden explizit beendet. Verbindungsabbruch pausiert weiterhin den Lauf; Wiederverbindung startet ihn nicht automatisch.
+
+Das HUD unterscheidet Markersuche, Boden erkannt, Bahn platziert und Tracking verloren. Die Telemetrie ergänzt `trackingState`, `trackingStatus` und `recordsStatus`; bestehende Statuswerte bleiben Strings.
 
 ## Geschwindigkeiten und Uhr
 
@@ -110,6 +118,14 @@ Unity sendet ungefähr mit 5 Hz ein `telemetry`-Objekt. Die aktuellen Laufwerte 
 | `records` | `fastest100mSeconds`, `bestLapSeconds`, `fastest1KmSeconds`: gemessene Zeiten oder `null` |
 
 Zusätzlich: `data.ble.connected` und `data.huds.stadium`. Aktuell werden keine vollständigen BLE-Vitalwerte oder Übungserkennungen von dieser Brücke geliefert. Verschachtelte Objekte im Relay werden ersetzt; der Client sendet vollständige Teilobjekte.
+
+## Persönliche Bestleistungen auf der Brille
+
+Gemessene 100-m-/Runden-/1-km-Bestzeiten und das Ghost-Profil der besten vollständigen Runde liegen unter `Application.persistentDataPath/runner-records/`. Laufband, reale Stadionbahn und Vorschau-Rundenlängen verwenden getrennte Profile. Schnellere Einzelrekorde werden zusammengeführt; langsamere Runden überschreiben keine bessere gespeicherte Runde. Beim Neustart oder Lauf-Reset werden passende persönliche Bestleistungen geladen, während Uhr und Nutzerdistanz neu beginnen. Eine laufende oder unvollständige Aufnahme wird nicht wiederaufgenommen.
+
+Dateien werden über einen temporären Schreibpfad ersetzt und durch `.bak` gesichert. Beschädigte Hauptdateien werden nach Möglichkeit aus dieser Sicherung geladen. Probleme erscheinen im Log und in `recordsStatus`.
+
+Die Dateioperationen laufen in einer gemeinsamen Hintergrundwarteschlange. Fehlgeschlagene Schreibaufträge bleiben über Lauf-Resets und Szenenwechsel hinweg ausstehend und werden automatisch erneut versucht. Beim Laden werden auch noch ausstehende Bestleistungen berücksichtigt. Eine beschädigte Hauptdatei darf die gültige Sicherung beim nächsten Schreiben nicht ersetzen.
 
 ## Sessions und Dateien
 
