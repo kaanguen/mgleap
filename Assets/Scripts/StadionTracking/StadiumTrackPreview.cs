@@ -62,16 +62,7 @@ namespace StadionTracking
         private LineRenderer _route;
         private LineRenderer _arrow;
         private Animator _animator;
-        private bool _hasRunningParameter;
-        private bool _hasSpeedParameter;
-        private bool _hasPlaybackRateParameter;
-        private float _walkSpeed = 1.5f;
-        private float _runSpeed = 3f;
-        private float _sprintSpeed = 6f;
-
-        private static readonly int RunningParameter = Animator.StringToHash("isRunning");
-        private static readonly int SpeedParameter = Animator.StringToHash("speed");
-        private static readonly int PlaybackRateParameter = Animator.StringToHash("locomotionRate");
+        private AvatarLocomotion _locomotion;
         private double _entryMetres;
 
         public int Lane { get; private set; }
@@ -177,56 +168,11 @@ namespace StadionTracking
             {
 
                 _animator = animator;
-                _hasRunningParameter = _hasSpeedParameter = _hasPlaybackRateParameter = false;
-                foreach (AnimatorControllerParameter parameter in animator.parameters)
-                {
-                    _hasRunningParameter |= parameter.nameHash == RunningParameter && parameter.type == AnimatorControllerParameterType.Bool;
-                    _hasSpeedParameter |= parameter.nameHash == SpeedParameter && parameter.type == AnimatorControllerParameterType.Float;
-                    _hasPlaybackRateParameter |= parameter.nameHash == PlaybackRateParameter && parameter.type == AnimatorControllerParameterType.Float;
-                }
-                CalibrateLocomotion(animator);
+                _locomotion = new AvatarLocomotion(animator);
             }
 
             animator.applyRootMotion = false;
-            LocomotionTiming.Evaluate(_animationSpeedFraction * SpeedAtFullSlider,
-                _walkSpeed, _runSpeed, _sprintSpeed, out float blend, out float playbackRate);
-            if (_hasRunningParameter)
-                animator.SetBool(RunningParameter, _animationSpeedFraction > 0f);
-            if (_hasSpeedParameter)
-                animator.SetFloat(SpeedParameter, _hasPlaybackRateParameter ? blend : _animationSpeedFraction);
-            if (_hasPlaybackRateParameter)
-                animator.SetFloat(PlaybackRateParameter, playbackRate);
-        }
-
-        private void CalibrateLocomotion(Animator animator)
-        {
-            // Root motion is disabled for placement, but imported clip velocities still
-            // tell us the speed at which each gait's steps were recorded.
-            _walkSpeed = 1.5f;
-            _runSpeed = 3f;
-            _sprintSpeed = 6f;
-            if (animator.runtimeAnimatorController == null)
-                return;
-            foreach (AnimationClip clip in animator.runtimeAnimatorController.animationClips)
-            {
-                Vector3 velocity = clip.averageSpeed;
-                float speed = new Vector2(velocity.x, velocity.z).magnitude;
-                if (float.IsNaN(speed) || float.IsInfinity(speed) || speed < 0.1f)
-                    continue; // In-place clips need the nominal gait speeds above.
-                switch (clip.name)
-                {
-                    case "walking": _walkSpeed = speed; break;
-                    case "runninig": _runSpeed = speed; break;
-                    case "sprint": _sprintSpeed = speed; break;
-                }
-            }
-            // Preserve a valid ordering if an imported clip has no useful trajectory.
-            if (_walkSpeed >= _runSpeed || _runSpeed >= _sprintSpeed)
-            {
-                _walkSpeed = 1.5f;
-                _runSpeed = 3f;
-                _sprintSpeed = 6f;
-            }
+            _locomotion.Apply(_animationSpeedFraction * SpeedAtFullSlider, _animationSpeedFraction);
         }
 
         // Advance continuously around the selected lane and return the ground position.

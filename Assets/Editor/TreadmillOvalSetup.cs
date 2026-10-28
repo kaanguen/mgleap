@@ -82,7 +82,7 @@ internal static class TreadmillOvalSetup
         for (int i = 0; i < steps; i++)
         {
             double s0 = i * length / steps, s1 = (i + 1) * length / steps;
-            Strip(s0, s1, -0.3f, width - 0.3f, 0f, new Color(0.55f, 0.12f, 0.07f));
+            // Leave the real floor visible between the lane markings.
             for (int lane = 0; lane <= StadiumTrackGeometry.LaneCount; lane++)
             {
                 float offset = (float)(lane * StadiumTrackGeometry.LaneWidth) - 0.3f;

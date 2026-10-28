@@ -64,6 +64,23 @@ namespace StadionTracking
         private float DetectedFloorHeightAt(Vector3 point) => markerFloorPoint.y -
             (markerFloorNormal.x * (point.x - markerFloorPoint.x) + markerFloorNormal.z * (point.z - markerFloorPoint.z)) / markerFloorNormal.y;
 
+        // Refined floor tracking must also move the already placed track, without resetting the run.
+        public void UpdateMarkerFloorPlane(Vector3 point, Vector3 normal)
+        {
+            if (!requireMarkerPlacement || !MarkerFloorConfirmed || normal.y < .9659f) return;
+            markerFloorPoint = point;
+            markerFloorNormal = normal.normalized;
+            startPosition.y = DetectedFloorHeightAt(startPosition);
+            calibrationPosition.y = DetectedFloorHeightAt(calibrationPosition);
+            startRotation = Quaternion.LookRotation(
+                Vector3.ProjectOnPlane(startRotation * Vector3.forward, markerFloorNormal), markerFloorNormal);
+            calibrationRotation = Quaternion.LookRotation(
+                Vector3.ProjectOnPlane(calibrationRotation * Vector3.forward, markerFloorNormal), markerFloorNormal);
+            if (TrackPointASet) trackPointA.y = DetectedFloorHeightAt(trackPointA);
+            surfaceHeight = startPosition.y;
+            ApplyCurrentPose();
+        }
+
         [Header("Placement")]
         [SerializeField] private Camera headCamera;
         [SerializeField, Tooltip("Align once to the initial horizontal view after head tracking is ready.")]
@@ -407,14 +424,9 @@ namespace StadionTracking
 
             double distance = (double)SpeedKmh / 3.6 * elapsedSeconds;
             travelledMetres += distance;
-            if (followOval400m)
-            {
-                ApplyOvalPose();
-                return;
-            }
-            tileOffset = (tileOffset + distance) % Math.Max(1.0, tileLengthMetres);
-            transform.SetPositionAndRotation(startPosition + startRotation * Vector3.back * (float)tileOffset,
-                startRotation);
+            if (!followOval400m)
+                tileOffset = (tileOffset + distance) % Math.Max(1.0, tileLengthMetres);
+            ApplyCurrentPose();
         }
 
         private void UpdatePhysicalProgress(float seconds)

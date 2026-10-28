@@ -19,6 +19,7 @@ namespace StadionTracking
         private readonly ConcurrentQueue<string> incoming = new ConcurrentQueue<string>();
         private readonly ConcurrentQueue<string> outgoing = new ConcurrentQueue<string>();
         private CancellationTokenSource lifetime;
+        private RunnerServerSetup serverSetup;
         private StraightTreadmillWorld world;
         private TreadmillCompanion companion;
         private ActiveStatsDisplay stats;
@@ -47,6 +48,7 @@ namespace StadionTracking
         }
         private void Awake()
         {
+            DisableGlobalDimming();
             world = GetComponent<StraightTreadmillWorld>();
             companion = FindFirstObjectByType<TreadmillCompanion>();
             stats = FindFirstObjectByType<ActiveStatsDisplay>();
@@ -83,15 +85,41 @@ namespace StadionTracking
         {
             // Start after all scene Awake calls, including the old session bootstrap.
             world.SessionPaused = true;
-            var config = Resources.Load<TextAsset>("RunnerServer");
-            var url = config != null ? JsonUtility.FromJson<Configuration>(config.text).serverUrl : new Configuration().serverUrl;
+            string url = new Configuration().serverUrl;
+            string configurationError = null;
             var overridePath = Path.Combine(Application.persistentDataPath, "runner-server.json");
-            try { if (File.Exists(overridePath)) url = JsonUtility.FromJson<Configuration>(File.ReadAllText(overridePath)).serverUrl; }
-            catch (Exception e) { Debug.LogError("[RunningServer] Invalid configuration: " + e.Message); return; }
-            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || (uri.Scheme != "ws" && uri.Scheme != "wss"))
-            { Debug.LogError("[RunningServer] Configure a ws:// or wss:// serverUrl."); return; }
+            try
+            {
+                var config = Resources.Load<TextAsset>("RunnerServer");
+                if (config != null) url = JsonUtility.FromJson<Configuration>(config.text).serverUrl;
+                if (File.Exists(overridePath)) url = JsonUtility.FromJson<Configuration>(File.ReadAllText(overridePath)).serverUrl;
+            }
+            catch (Exception e) { configurationError = "Gespeicherte Adresse konnte nicht geladen werden: " + e.Message; }
+            serverSetup = RunnerServerSetup.Create(this, url, configurationError);
+        }
+
+        public bool ConnectToServer(string address, out string error)
+        {
+            error = null;
+            if (!RunnerServerSetup.TryNormalizeAddress(address, out var uri))
+            { error = "Bitte eine gültige IP-Adresse oder ws:// bzw. wss:// Adresse eingeben."; return false; }
+            try
+            {
+                File.WriteAllText(Path.Combine(Application.persistentDataPath, "runner-server.json"),
+                    JsonUtility.ToJson(new Configuration { serverUrl = uri.AbsoluteUri }, true));
+            }
+            catch (Exception e) { error = "Adresse konnte nicht gespeichert werden: " + e.Message; return false; }
+            lifetime?.Cancel();
+            lifetime?.Dispose();
+            connected = false;
+            world.SessionPaused = true;
+            if (state == "Running") state = "Paused";
+            while (incoming.TryDequeue(out _)) { }
+            while (outgoing.TryDequeue(out _)) { }
             lifetime = new CancellationTokenSource();
+            Debug.Log("[RunningServer] Connecting to " + uri.GetLeftPart(UriPartial.Path));
             _ = ConnectLoop(uri, lifetime.Token);
+            return true;
         }
         private async Task ConnectLoop(Uri uri, CancellationToken token)
         {
@@ -107,6 +135,7 @@ namespace StadionTracking
                         { timeout.CancelAfter(5000); await socket.ConnectAsync(uri, timeout.Token); }
                         await Send(socket, new JObject { ["type"] = "hello", ["role"] = "headset", ["deviceId"] = deviceId,
                             ["platform"] = "Magic Leap 2" }.ToString(), token);
+                        if (token.IsCancellationRequested) return;
                         incoming.Enqueue("__connected");
                         delay = 500;
                         using (var connection = CancellationTokenSource.CreateLinkedTokenSource(token))
@@ -127,11 +156,14 @@ namespace StadionTracking
                 }
                 catch (Exception e) when (!token.IsCancellationRequested)
                 { incoming.Enqueue("__error:" + e.Message); }
-                catch (OperationCanceledException) { }
+                catch (Exception) when (token.IsCancellationRequested) { }
                 finally
                 {
-                    incoming.Enqueue("__disconnected");
-                    while (outgoing.TryDequeue(out _)) { }
+                    if (!token.IsCancellationRequested)
+                    {
+                        incoming.Enqueue("__disconnected");
+                        while (outgoing.TryDequeue(out _)) { }
+                    }
                 }
                 try { await Task.Delay(delay, token); } catch (OperationCanceledException) { break; }
                 delay = Math.Min(delay * 2, 10000);
@@ -159,6 +191,7 @@ namespace StadionTracking
                         message.Write(buffer, 0, result.Count);
                     } while (!result.EndOfMessage);
                     if (incoming.Count >= 128) throw new InvalidDataException("Server command queue is full.");
+                    if (token.IsCancellationRequested) return;
                     incoming.Enqueue(Encoding.UTF8.GetString(message.ToArray()));
                 }
             }
@@ -169,7 +202,6 @@ namespace StadionTracking
             if (startupAvatarPending && companion != null && world.PlacementReady && world.HeightConfirmed)
             {
                 SpawnOnStartLane();
-                startupAvatarPending = false;
             }
             int remaining = 32;
             while (remaining-- > 0 && incoming.TryDequeue(out var json))
@@ -177,6 +209,7 @@ namespace StadionTracking
                 if (json == "__connected")
                 {
                     connected = true;
+                    if (serverSetup != null) serverSetup.gameObject.SetActive(false);
                     Queue(new JObject { ["type"] = "registry", ["data"] = new JObject {
                         ["project"] = "MarkerML2", ["avatars"] = new JArray("runner"), ["huds"] = new JArray("stadium"),
                         ["capabilities"] = new JObject { ["ambientLightCalibration"] = false,
@@ -186,59 +219,72 @@ namespace StadionTracking
                     nextTelemetry = 0;
                 }
                 else if (json == "__disconnected")
-                { connected = false; world.SessionPaused = true; if (state == "Running") state = "Paused"; }
-                else if (json.StartsWith("__error:")) Debug.LogWarning("[RunningServer] " + json.Substring(8));
+                {
+                    connected = false; world.SessionPaused = true; if (state == "Running") state = "Paused";
+                    if (serverSetup != null) serverSetup.SetStatus("Nicht verbunden. Adresse prüfen oder erneut verbinden.", true);
+                }
+                else if (json.StartsWith("__error:"))
+                {
+                    Debug.LogWarning("[RunningServer] " + json.Substring(8));
+                    if (serverSetup != null) serverSetup.SetStatus("Verbindung fehlgeschlagen. WLAN und Adresse prüfen.", true);
+                }
                 else Handle(json);
             }
             if (connected && Time.unscaledTime >= nextTelemetry)
             {
                 nextTelemetry = Time.unscaledTime + .2f;
-                var run = new JObject { ["state"] = state, ["distance"] = world.TravelledMetres,
-                    ["elapsed"] = stats != null ? stats.ElapsedSeconds : 0, ["laps"] = world.CompletedLaps,
-                    ["lapLength"] = 400, ["speed"] = world.SessionPaused ? 0 : world.SpeedMetresPerSecond,
-                    ["speedKmh"] = world.RealTrackMode ? world.SpeedMetresPerSecond * 3.6f : world.SpeedKmh, ["mode"] = RunnerSessionSettings.Mode.ToString(),
-                    ["heightCm"] = world.BodyHeightCm, ["paceSeconds"] = RunnerSessionSettings.PaceSeconds,
-                    ["placementReady"] = world.PlacementReady, ["trackVisible"] = world.ShowTrack };
-                var ghost = stats != null ? stats.GetComponent<LapGhostPlayback>() : null;
-                run["userSpeedSource"] = world.RealTrackMode ? "HeadTracking" : world.UserSpeedSource.ToString();
-                run["fixedUserSpeedKmh"] = world.FixedTestSpeedKmh;
-                run["treadmillSignalReady"] = world.TreadmillSignalReady;
-                run["environment"] = world.RealTrackMode ? "Stadium" : "Treadmill";
-                run["avatarLane"] = world.AvatarLane;
-                run["stadiumCalibration"] = new JObject { ["pointA"] = world.TrackPointASet,
-                    ["calibrated"] = world.RealTrackCalibrated, ["baselineMetres"] = world.CalibrationBaselineMetres,
-                    ["raceStartTrackMetres"] = world.RaceStartTrackMetres };
-                run["markerPlacement"] = new JObject {
-                    ["required"] = world.RequiresMarkerPlacement, ["floorConfirmed"] = world.MarkerFloorConfirmed,
-                    ["markerId"] = markerTracker?.RunningTrackMarkerId?.ToString(),
-                    ["status"] = markerTracker != null ? markerTracker.RunningTrackStatus : "Marker-Tracker fehlt." };
-                run["records"] = new JObject {
-                    ["fastest100mSeconds"] = stats?.Recorded100mSeconds,
-                    ["bestLapSeconds"] = stats?.RecordedLapSeconds,
-                    ["fastest1KmSeconds"] = stats?.Recorded1KmSeconds };
-                run["headPoseReady"] = world.HeadPoseReady;
-                run["heightConfirmed"] = world.HeightConfirmed;
-                run["calibration"] = new JObject { ["along"] = world.CalibrationOffsets.y,
-                    ["across"] = world.CalibrationOffsets.x, ["heading"] = world.CalibrationOffsets.z,
-                    ["surfaceHeight"] = world.SurfaceHeight };
-                run["placement"] = companion == null ? null : new JObject {
-                    ["laneActive"] = companion.UseSelectedLane || world.RealTrackMode, ["position"] = companion.PlacementPosition, ["facing"] = companion.PlacementFacing,
-                    ["distance"] = companion.PlacementDistance, ["across"] = companion.PlacementOffset.x,
-                    ["along"] = companion.PlacementOffset.z };
-                run["trackPositionMetres"] = world.RealTrackMode ? world.UserTrackPositionMetres : (world.TrackStartMetres + world.TravelledMetres) % 400;
-                run["ghost"] = ghost == null ? null : new JObject {
-                    ["active"] = ghost.IsPartnerActive, ["distance"] = ghost.TravelledMetres,
-                    ["trackPositionMetres"] = (world.TrackStartMetres + (world.RealTrackMode ? world.RaceStartTrackMetres : 0) + ghost.TravelledMetres) % 400,
-                    ["speedKmh"] = ghost.CurrentSpeedKmh, ["gapMetres"] = ghost.GapMetres,
-                    ["testMode"] = ghost.TestSpeedEnabled, ["testSpeedKmh"] = ghost.TestSpeedKmh,
-                    ["recordedLap"] = ghost.IsRecordedLap };
-                var ble = FindFirstObjectByType<BleConnection>();
-                Queue(new JObject { ["type"] = "telemetry", ["data"] = new JObject {
-                    ["treadmill"] = run, ["runningMate"] = run.DeepClone(),
-                    ["ble"] = new JObject { ["connected"] = ble != null && ble.Connected },
-                    ["huds"] = new JObject { ["stadium"] = statsCanvas != null && (statsCanvas.GetComponent<CanvasGroup>() == null || statsCanvas.GetComponent<CanvasGroup>().alpha > 0) } } });
+                SendTelemetry();
             }
         }
+        private void SendTelemetry()
+        {
+            var run = new JObject { ["state"] = state, ["distance"] = world.TravelledMetres,
+                ["elapsed"] = stats != null ? stats.ElapsedSeconds : 0, ["laps"] = world.CompletedLaps,
+                ["lapLength"] = 400, ["speed"] = world.SessionPaused ? 0 : world.SpeedMetresPerSecond,
+                ["speedKmh"] = world.RealTrackMode ? world.SpeedMetresPerSecond * 3.6f : world.SpeedKmh, ["mode"] = RunnerSessionSettings.Mode.ToString(),
+                ["heightCm"] = world.BodyHeightCm, ["paceSeconds"] = RunnerSessionSettings.PaceSeconds,
+                ["placementReady"] = world.PlacementReady, ["trackVisible"] = world.ShowTrack };
+            var ghost = stats != null ? stats.GetComponent<LapGhostPlayback>() : null;
+            run["userSpeedSource"] = world.RealTrackMode ? "HeadTracking" : world.UserSpeedSource.ToString();
+            run["fixedUserSpeedKmh"] = world.FixedTestSpeedKmh;
+            run["treadmillSignalReady"] = world.TreadmillSignalReady;
+            run["environment"] = world.RealTrackMode ? "Stadium" : "Treadmill";
+            run["avatarLane"] = world.AvatarLane;
+            run["stadiumCalibration"] = new JObject { ["pointA"] = world.TrackPointASet,
+                ["calibrated"] = world.RealTrackCalibrated, ["baselineMetres"] = world.CalibrationBaselineMetres,
+                ["raceStartTrackMetres"] = world.RaceStartTrackMetres };
+            run["markerPlacement"] = new JObject {
+                ["required"] = world.RequiresMarkerPlacement, ["floorConfirmed"] = world.MarkerFloorConfirmed,
+                ["markerId"] = markerTracker?.RunningTrackMarkerId?.ToString(),
+                ["status"] = markerTracker != null ? markerTracker.RunningTrackStatus : "Marker-Tracker fehlt." };
+            run["records"] = new JObject {
+                ["fastest100mSeconds"] = stats?.Recorded100mSeconds,
+                ["bestLapSeconds"] = stats?.RecordedLapSeconds,
+                ["fastest1KmSeconds"] = stats?.Recorded1KmSeconds };
+            run["headPoseReady"] = world.HeadPoseReady;
+            run["heightConfirmed"] = world.HeightConfirmed;
+            run["calibration"] = new JObject { ["along"] = world.CalibrationOffsets.y,
+                ["across"] = world.CalibrationOffsets.x, ["heading"] = world.CalibrationOffsets.z,
+                ["surfaceHeight"] = world.SurfaceHeight };
+            run["placement"] = companion == null ? null : new JObject {
+                ["laneActive"] = companion.UseSelectedLane || world.RealTrackMode, ["position"] = companion.PlacementPosition, ["facing"] = companion.PlacementFacing,
+                ["distance"] = companion.PlacementDistance, ["across"] = companion.PlacementOffset.x,
+                ["along"] = companion.PlacementOffset.z };
+            run["trackPositionMetres"] = world.RealTrackMode ? world.UserTrackPositionMetres : (world.TrackStartMetres + world.TravelledMetres) % 400;
+            run["ghost"] = ghost == null ? null : new JObject {
+                ["active"] = ghost.IsPartnerActive, ["distance"] = ghost.TravelledMetres,
+                ["trackPositionMetres"] = (world.TrackStartMetres + (world.RealTrackMode ? world.RaceStartTrackMetres : 0) + ghost.TravelledMetres) % 400,
+                ["speedKmh"] = ghost.CurrentSpeedKmh, ["gapMetres"] = ghost.GapMetres,
+                ["testMode"] = ghost.TestSpeedEnabled, ["testSpeedKmh"] = ghost.TestSpeedKmh,
+                ["recordedLap"] = ghost.IsRecordedLap, ["hasRecording"] = ghost.HasRecordedLap,
+                ["playbackMode"] = ghost.PlaybackMode };
+            var ble = FindFirstObjectByType<BleConnection>();
+            Queue(new JObject { ["type"] = "telemetry", ["data"] = new JObject {
+                ["treadmill"] = run, ["runningMate"] = run.DeepClone(),
+                ["ble"] = new JObject { ["connected"] = ble != null && ble.Connected },
+                ["huds"] = new JObject { ["stadium"] = statsCanvas != null && (statsCanvas.GetComponent<CanvasGroup>() == null || statsCanvas.GetComponent<CanvasGroup>().alpha > 0) } } });
+        }
+
         private void Queue(JObject message) => outgoing.Enqueue(message.ToString(Newtonsoft.Json.Formatting.None));
         private void Handle(string json)
         {
@@ -274,7 +320,7 @@ namespace StadionTracking
                     break;
                 case "runningMate.setLane":
                     RequireCalibrationReady();
-                    int lane = (int)Number(p, "lane", world.AvatarLane, 1, 8);
+                    int lane = (int)RunnerCommandValues.Number(p, "lane", world.AvatarLane, 1, 8);
                     world.SetAvatarLane(lane);
                     if (companion != null) companion.UseLanePlacement();
                     break;
@@ -291,7 +337,7 @@ namespace StadionTracking
                     if (!world.SessionPaused) throw new InvalidOperationException("Pause before capturing calibration points.");
                     var point = (string)p["point"];
                     if (point == "A") world.CaptureTrackPointA();
-                    else if (point == "B") world.CaptureTrackPointB(Decimal(p, "distanceAlongTrack", 20, 5, 100));
+                    else if (point == "B") world.CaptureTrackPointB(RunnerCommandValues.Decimal(p, "distanceAlongTrack", 20, 5, 100));
                     else throw new ArgumentException("point must be A or B.");
                     break;
                 case "avatar.configurePlacement":
@@ -303,25 +349,25 @@ namespace StadionTracking
                         if (field.Name != "position" && field.Name != "facing" && field.Name != "distance")
                             throw new ArgumentException("Unsupported placement field: " + field.Name);
                     if (world.RealTrackMode) throw new InvalidOperationException("Use lane selection for avatar placement on a real stadium track.");
-                    companion.ConfigurePlacement((string)p["position"], (string)p["facing"], Decimal(p, "distance", 2, .5f, 20));
+                    companion.ConfigurePlacement((string)p["position"], (string)p["facing"], RunnerCommandValues.Decimal(p, "distance", 2, .5f, 20));
                     break;
                 case "avatar.reposition":
                 case "scene.recalibrate":
                     RequireCalibrationReady();
-                    bool includeHeight = command == "scene.recalibrate" && (p["includeHeight"] == null || Boolean(p, "includeHeight"));
+                    bool includeHeight = command == "scene.recalibrate" && (p["includeHeight"] == null || RunnerCommandValues.Boolean(p, "includeHeight"));
                     if (!world.RecalibratePlacement(includeHeight)) throw new InvalidOperationException("Head pose cannot be used for calibration. Look horizontally forward and retry.");
                     break;
                 case "scene.adjustHeight":
                     RequireCalibrationReady();
-                    world.AdjustSurfaceHeight(Decimal(p, "deltaMetres", 0, -.5f, .5f));
+                    world.AdjustSurfaceHeight(RunnerCommandValues.Decimal(p, "deltaMetres", 0, -.5f, .5f));
                     break;
                 case "runningMate.adjust":
                     RequireCalibrationReady();
-                    bool reset = p["reset"] != null && Boolean(p, "reset");
+                    bool reset = p["reset"] != null && RunnerCommandValues.Boolean(p, "reset");
                     var offsets = world.CalibrationOffsets;
-                    var across = reset ? 0 : Decimal(p, "across", offsets.x, -100, 100);
-                    var along = reset ? 0 : Decimal(p, "along", offsets.y, -100, 100);
-                    var heading = reset ? 0 : Decimal(p, "heading", offsets.z, -180, 180);
+                    var across = reset ? 0 : RunnerCommandValues.Decimal(p, "across", offsets.x, -100, 100);
+                    var along = reset ? 0 : RunnerCommandValues.Decimal(p, "along", offsets.y, -100, 100);
+                    var heading = reset ? 0 : RunnerCommandValues.Decimal(p, "heading", offsets.z, -180, 180);
                     world.SetCalibrationOffsets(across, along, heading);
                     break;
                 case "runningMate.setUserSpeed":
@@ -329,7 +375,7 @@ namespace StadionTracking
                     var speedSource = (string)p["source"];
                     if (speedSource != "FixedTest" && speedSource != "Treadmill")
                         throw new ArgumentException("source must be FixedTest or Treadmill.");
-                    float fixedKmh = Decimal(p, "speedKmh", world.FixedTestSpeedKmh, 0, 100);
+                    float fixedKmh = RunnerCommandValues.Decimal(p, "speedKmh", world.FixedTestSpeedKmh, 0, 100);
                     world.ConfigureUserSpeed((RunnerSpeedSource)Enum.Parse(typeof(RunnerSpeedSource), speedSource), fixedKmh);
                     break;
                 case "runningMate.setGhostSpeed":
@@ -346,11 +392,11 @@ namespace StadionTracking
                     foreach (var property in p.Properties())
                         if (property.Name != "paceSeconds" && property.Name != "heightCm" && property.Name != "mode" && property.Name != "showTrack")
                             throw new ArgumentException("Unsupported runningMate.configure field: " + property.Name);
-                    var pace = Number(p, "paceSeconds", RunnerSessionSettings.PaceSeconds, 180, 1200);
-                    var height = Number(p, "heightCm", world.BodyHeightCm, 80, 230);
+                    var pace = RunnerCommandValues.Number(p, "paceSeconds", RunnerSessionSettings.PaceSeconds, 180, 1200);
+                    var height = RunnerCommandValues.Number(p, "heightCm", world.BodyHeightCm, 80, 230);
                     var mode = (string)p["mode"] ?? RunnerSessionSettings.Mode.ToString();
                     if (mode != "SideBySide" && mode != "TempoPartner") throw new ArgumentException("mode must be SideBySide or TempoPartner.");
-                    bool showTrack = p["showTrack"] == null ? world.ShowTrack : Boolean(p, "showTrack");
+                    bool showTrack = p["showTrack"] == null ? world.ShowTrack : RunnerCommandValues.Boolean(p, "showTrack");
                     if (p["heightCm"] != null && !world.HeadPoseReady) throw new InvalidOperationException("Head tracking is not ready for height calibration.");
                     RunnerSessionSettings.PaceSeconds = (int)pace;
                     RunnerSessionSettings.HeightCm = (int)height;
@@ -361,8 +407,7 @@ namespace StadionTracking
                     world.ShowTrack = showTrack;
                     RunnerSessionSettings.ShowTrack = showTrack;
                     if (companion != null) companion.SetMode(RunnerSessionSettings.Mode);
-                    if (stats != null) stats.ResetSessionStats();
-                    if (world.PlacementReady) world.ResetDistance();
+                    if (stats != null) stats.RefreshTargetPace();
                     world.SessionPaused = true;
                     state = "Ready";
                     break;
@@ -387,11 +432,11 @@ namespace StadionTracking
                         default: throw new ArgumentException("Unsupported running action.");
                     }
                     break;
-                case "scene.setRunningMatePathVisible": world.ShowTrack = Boolean(p, "visible"); break;
+                case "scene.setRunningMatePathVisible": world.ShowTrack = RunnerCommandValues.Boolean(p, "visible"); break;
                 case "scene.setHudVisible":
                     if ((string)p["id"] != "stadium") throw new ArgumentException("Only the stadium HUD exists.");
-                    SetHud(Boolean(p, "visible")); break;
-                case "scene.setRunningMateHudVisible": SetHud(Boolean(p, "visible")); break;
+                    SetHud(RunnerCommandValues.Boolean(p, "visible")); break;
+                case "scene.setRunningMateHudVisible": SetHud(RunnerCommandValues.Boolean(p, "visible")); break;
                 case "sensor.connect": case "sensor.disconnect":
                     var ble = FindFirstObjectByType<BleConnection>();
                     if (ble == null) throw new InvalidOperationException("No BLE component in this scene.");
@@ -417,16 +462,6 @@ namespace StadionTracking
             if (!world.HeadPoseReady || !world.PlacementReady || !world.HeightConfirmed)
                 throw new InvalidOperationException("Wait for head tracking, then scan a floor marker and its detected floor plane.");
         }
-        private static float Decimal(JObject p, string key, float fallback, float min, float max)
-        {
-            if (p[key] == null) return fallback;
-            if (p[key].Type != JTokenType.Integer && p[key].Type != JTokenType.Float)
-                throw new ArgumentException(key + " must be numeric.");
-            double value = (double)p[key];
-            if (double.IsNaN(value) || double.IsInfinity(value) || value < min || value > max)
-                throw new ArgumentOutOfRangeException(key, $"Expected {min}..{max}.");
-            return (float)value;
-        }
         private void SetHud(bool visible)
         {
             // Keep the common race clock and ghost simulation alive while hiding graphics.
@@ -435,20 +470,25 @@ namespace StadionTracking
             if (group == null) group = statsCanvas.gameObject.AddComponent<CanvasGroup>();
             group.alpha = visible ? 1 : 0;
         }
-        private static bool Boolean(JObject p, string key)
+        private void OnDestroy()
         {
-            if (p[key]?.Type != JTokenType.Boolean) throw new ArgumentException(key + " must be a boolean.");
-            return (bool)p[key];
+            lifetime?.Cancel(); lifetime?.Dispose();
+            if (serverSetup != null) Destroy(serverSetup.gameObject);
         }
-        private static float Number(JObject p, string key, float fallback, float min, float max)
+
+        private static void DisableGlobalDimming()
         {
-            if (p[key] == null) return fallback;
-            if (p[key].Type != JTokenType.Integer) throw new ArgumentException(key + " must be an integer.");
-            float value = (float)p[key];
-            if (float.IsNaN(value) || float.IsInfinity(value) || value < min || value > max)
-                throw new ArgumentOutOfRangeException(key, $"Expected {min}..{max}.");
-            return value;
+            var settings = UnityEngine.XR.OpenXR.OpenXRSettings.Instance;
+            if (settings == null) return;
+            var rendering = settings.GetFeature<MagicLeap.OpenXR.Features.MagicLeapRenderingExtensionsFeature>();
+            if (rendering == null) return;
+            rendering.GlobalDimmerEnabled = false;
+            rendering.GlobalDimmerValue = 0f;
         }
-        private void OnDestroy() { lifetime?.Cancel(); lifetime?.Dispose(); }
+
+        private void OnApplicationPause(bool paused)
+        {
+            if (!paused) DisableGlobalDimming();
+        }
     }
 }

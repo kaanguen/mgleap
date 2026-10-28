@@ -136,7 +136,6 @@ internal static class StraightTreadmillSetup
         }
 
         // Three 1.22 m lanes at real scale; the viewer starts at the middle lane's centre.
-        Quad(-1.83f, 1.83f, 0f, 20f, 0f, new Color(0.55f, 0.12f, 0.07f));
         for (int lane = 0; lane <= 3; lane++)
         {
             float x = -1.83f + lane * 1.22f;
@@ -145,7 +144,7 @@ internal static class StraightTreadmillSetup
         for (int marker = 0; marker < 4; marker++)
         {
             float z = marker * 5f + 2f;
-            // Short white dashes and yellow edge ticks make speed visible on a uniform surface.
+            // Short white dashes and yellow edge ticks make speed visible on the real floor.
             Quad(-0.04f, 0.04f, z, z + 0.6f, 0.006f, Color.white);
             Quad(-1.8f, -1.5f, z, z + 0.08f, 0.006f, Color.yellow);
             Quad(1.5f, 1.8f, z, z + 0.08f, 0.006f, Color.yellow);

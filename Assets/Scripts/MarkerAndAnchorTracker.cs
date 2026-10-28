@@ -66,6 +66,7 @@ public class MarkerAndAnchorTracker : MonoBehaviour
 
     private StraightTreadmillWorld _runningWorld;
     private bool _runningWorldPlaced;
+    private ARPlane _runningWorldFloor;
     private int _runningWorldRevision;
     private float _runningWorldScanRequestedAt;
     private float _nextRunningPlacementDiagnostic;
@@ -76,6 +77,7 @@ public class MarkerAndAnchorTracker : MonoBehaviour
         _runningWorld = world;
         _markersOnFloor = true;
         _runningWorldPlaced = false;
+        _runningWorldFloor = null;
         _runningWorldRevision = world.MarkerPlacementRevision;
         _runningWorldScanRequestedAt = Time.unscaledTime;
     }
@@ -549,11 +551,27 @@ public class MarkerAndAnchorTracker : MonoBehaviour
         {
             _runningWorldRevision = _runningWorld.MarkerPlacementRevision;
             _runningWorldPlaced = false;
+            _runningWorldFloor = null;
             RunningTrackMarkerId = null;
             _runningWorldScanRequestedAt = Time.unscaledTime;
             foreach (var previous in _markersById.Values) previous.PoseSamples = 0;
         }
-        if (_runningWorldPlaced) return; // Looking away must never despawn or reposition the track.
+        if (_runningWorldPlaced)
+        {
+            // Keep the marker placement when looking away, but follow refinements of its floor.
+            while (_runningWorldFloor != null && _runningWorldFloor.subsumedBy != null)
+                _runningWorldFloor = _runningWorldFloor.subsumedBy;
+            if (_runningWorldFloor != null && _runningWorldFloor.trackingState == TrackingState.Tracking &&
+                _runningWorldFloor.classification == PlaneClassification.Floor)
+            {
+                Transform floorSurface = _smoothedPlanes.TryGetValue(_runningWorldFloor.trackableId, out var floorState)
+                    ? floorState.Visual : _runningWorldFloor.transform;
+                Vector3 floorNormal = floorSurface.up;
+                if (floorNormal.y < 0) floorNormal = -floorNormal;
+                _runningWorld.UpdateMarkerFloorPlane(floorSurface.position, floorNormal);
+            }
+            return;
+        }
         if (!_spatialMappingGranted || !_planeManager.enabled)
         { RunningTrackStatus = "Warte auf Spatial Mapping und Plane-Erkennung."; return; }
         Transform origin = _xrOrigin.CameraFloorOffsetObject.transform;
@@ -594,6 +612,7 @@ public class MarkerAndAnchorTracker : MonoBehaviour
             if (!_runningWorld.PlaceFromMarkerPlane(ground, forward.normalized, normal))
             { waitingReason = "Boden und Marker bestätigt; warte auf Headtracking."; continue; }
             _runningWorldPlaced = true;
+            _runningWorldFloor = plane;
             RunningTrackMarkerId = entry.Key;
             RunningTrackStatus = $"Marker {entry.Key} · Bodenfläche bestätigt · Bahn platziert.";
             Debug.Log($"[RunningTrack] Marker {entry.Key} placed track and avatar on floor {plane.trackableId} at {ground}; floorRayCorrection={correctedDepth}, markerPose={markerWorld}.");
@@ -735,6 +754,7 @@ public class MarkerAndAnchorTracker : MonoBehaviour
                 marker.Instance = Instantiate(_markerPrefab, surfacePosition,
                     GetUprightRotation(surfacePosition, origin.rotation * marker.SessionRotation,
                         _xrOrigin.Camera.transform.position), origin);
+                AvatarVisibility.Configure(marker.Instance);
                 marker.PlacementSessionPosition = origin.InverseTransformPoint(worldPosition);
                 marker.SpawnFrame = Time.frameCount;
                 marker.GroundContactReady = false;
@@ -932,39 +952,11 @@ public class MarkerAndAnchorTracker : MonoBehaviour
     // Measure the posed character mesh to place its feet on the floor.
     private static bool TryGetLowestCharacterPoint(MarkerState marker, out Vector3 lowestPoint)
     {
-        lowestPoint = Vector3.zero;
-        float lowestHeight = float.PositiveInfinity;
-        bool found = false;
-        var bakedMesh = new Mesh();
-        var vertices = new List<Vector3>();
-        try
-        {
-
-            foreach (SkinnedMeshRenderer skin in marker.Instance.GetComponentsInChildren<SkinnedMeshRenderer>())
-            {
-                if (skin.sharedMesh == null)
-                    continue;
-                skin.BakeMesh(bakedMesh);
-                bakedMesh.GetVertices(vertices);
-                foreach (Vector3 vertex in vertices)
-                {
-                    Vector3 point = skin.transform.TransformPoint(vertex);
-                    float height = point.y;
-                    if (height >= lowestHeight)
-                        continue;
-                    lowestHeight = height;
-                    lowestPoint = point;
-                    found = true;
-                }
-            }
-        }
-        finally
-        {
-            Destroy(bakedMesh);
-        }
-        if (found)
+        if (AvatarGrounding.TryGetLowestSkinnedPoint(marker.Instance, out lowestPoint))
             return true;
 
+        float lowestHeight = float.PositiveInfinity;
+        bool found = false;
         foreach (Renderer renderer in marker.Renderers)
         {
             if (!(renderer is MeshRenderer) || renderer.GetComponentInParent<Canvas>() != null ||

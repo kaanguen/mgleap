@@ -5105,7 +5105,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -1.2589961, y: 0.374123}
+  m_AnchoredPosition: {x: -0.8937911, y: 0.37412286}
   m_SizeDelta: {x: 300, y: 317}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1284591499
@@ -5128,11 +5128,6 @@ MonoBehaviour:
   checkpointReadout: {fileID: 0}
   headCamera: {fileID: 0}
   treadmillWorld: {fileID: 1938132413}
-  horizontalMargin: 0.07
-  verticalMargin: 0.077
-  safeViewportMargin: 0.008
-  distanceFromHead: 0.6
-  worldScale: 0.0004
   refreshInterval: 0.15
 --- !u!114 &1284591500
 MonoBehaviour:
@@ -7188,8 +7183,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   world: {fileID: 1938132413}
-  avatarPrefab: {fileID: 6372221548154388653, guid: 1adc3dc731640418c82011ffa98b525e, type: 3}
-  runMode: 1
+  avatarPrefab: {fileID: 8268952765433050600, guid: 3521e0827496f4e6cab662fdce267dbe, type: 3}
+  runMode: 0
   sideOffset: {x: 2.22, y: 0, z: 0}
 --- !u!4 &1723702389
 Transform:

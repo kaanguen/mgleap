@@ -8,7 +8,7 @@ namespace StadionTracking
         private const int CheckpointsPerLap = 4;
         private readonly double lapLengthMetres;
         private readonly double checkpointLengthMetres;
-        private readonly double targetPaceSecondsPerKm;
+        private double targetPaceSecondsPerKm;
         private readonly double[] bestCheckpointTimes = new double[CheckpointsPerLap];
         private readonly double[] currentCheckpointTimes = new double[CheckpointsPerLap];
         private readonly Dictionary<int, double> bestKmTimes = new Dictionary<int, double>();
@@ -70,6 +70,23 @@ namespace StadionTracking
         public double? Recorded1KmSeconds { get; private set; }
         public double Fastest100mSeconds { get; private set; }
         public double Fastest1KmSeconds { get; private set; }
+
+        /// <summary>Change the fallback pace without discarding measured records or lap samples.</summary>
+        public void SetTargetPace(double secondsPerKm)
+        {
+            if (secondsPerKm <= 0 || double.IsNaN(secondsPerKm) || double.IsInfinity(secondsPerKm))
+                throw new ArgumentOutOfRangeException(nameof(secondsPerKm));
+            targetPaceSecondsPerKm = secondsPerKm;
+            if (BestLapIsExample)
+            {
+                bestLapSeconds = secondsPerKm * lapLengthMetres / 1000.0;
+                for (int i = 0; i < CheckpointsPerLap; i++)
+                    bestCheckpointTimes[i] = bestLapSeconds * (i + 1) / CheckpointsPerLap;
+            }
+            Fastest100mSeconds = Recorded100mSeconds ?? secondsPerKm * .1;
+            Fastest1KmSeconds = Recorded1KmSeconds ?? secondsPerKm;
+            UpdateNextCheckpoint((long)Math.Floor((lastDistance % lapLengthMetres) / checkpointLengthMetres), lastDistance);
+        }
 
         public double GetBestKmSeconds(int kmIndex)
         {
@@ -203,7 +220,7 @@ namespace StadionTracking
             {
                 if (completeLap && splitTime > 0 && (!RecordedLapSeconds.HasValue || splitTime < RecordedLapSeconds.Value))
                     RecordedLapSeconds = splitTime;
-                bool isNewBest = completeLap && splitTime > 0 && splitTime < bestLapSeconds;
+                bool isNewBest = completeLap && splitTime > 0 && (BestLapIsExample || splitTime < bestLapSeconds);
                 if (isNewBest)
                 {
                     bestLapSeconds = splitTime;
