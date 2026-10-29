@@ -41,7 +41,7 @@ namespace StadionTracking
             if (library == null) return result;
             foreach (var entry in library.animations)
                 if (entry != null && entry.clip != null)
-                    result.Add(new JObject { ["id"] = entry.id, ["name"] = entry.label,
+                    result.Add(new JObject { ["id"] = entry.id, ["name"] = entry.DisplayName,
                         ["category"] = entry.category, ["duration"] = entry.Duration, ["supportsHoldDuration"] = entry.IsSequence });
             return result;
         }
@@ -98,7 +98,7 @@ namespace StadionTracking
                     break;
                 case "exercise.stopWarmup":
                     RunnerCommandValues.RequireFields(p, "exercise.stopWarmup");
-                    world.GetComponent<RunnerWarmup>()?.Stop();
+                    world.GetComponent<RunnerWarmup>()?.Finish();
                     companion?.Synchronize();
                     break;
                 case "exercise.nextWarmup":
@@ -246,6 +246,8 @@ namespace StadionTracking
                                 throw new InvalidOperationException("Place or calibrate the track before spawning the avatar.");
                             SpawnOnSelectedLane(); break;
                         case "start": case "resume":
+                            if (activeWarmup != null && activeWarmup.Active)
+                                throw new InvalidOperationException("Zuerst Warm-up beenden und warten, bis der Avatar auf seiner Bahn steht.");
                             if (!world.PlacementReady || !world.HeightConfirmed || (world.RealTrackMode && !world.RealTrackCalibrated)) throw new InvalidOperationException("Placement is not ready. Calibrate stadium points A/B first.");
                             if ((string)p["action"] == "start") SpawnOnSelectedLane();
                             else if (companion != null) companion.enabled = true;
@@ -301,7 +303,9 @@ namespace StadionTracking
             if (statsCanvas == null) return;
             var group = statsCanvas.GetComponent<CanvasGroup>();
             if (group == null) group = statsCanvas.gameObject.AddComponent<CanvasGroup>();
-            group.alpha = visible ? 1 : 0;
+            bool show = visible && !warmupStatsHidden;
+            group.alpha = show ? 1 : 0;
+            group.interactable = group.blocksRaycasts = show;
         }
     }
 }

@@ -18,7 +18,7 @@ namespace StadionTracking
         private int revision;
         public bool Active => selected != null;
         public string AnimationId => selected != null ? selected.id : "Automatic";
-        public string AnimationLabel => selected != null ? selected.label : "Automatische Laufbewegung";
+        public string AnimationLabel => selected != null ? selected.DisplayName : "Automatische Laufbewegung";
         public bool Loop { get; private set; }
         public float PlaybackSpeed { get; private set; } = 1;
         public float ElapsedSeconds { get; private set; }

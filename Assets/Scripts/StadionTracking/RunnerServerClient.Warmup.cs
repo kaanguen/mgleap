@@ -29,7 +29,9 @@ namespace StadionTracking
             // All payload and placement validation precedes any state change.
             SetSessionState(RunnerSessionState.Ready);
             companion.enabled = true;
-            warmup.Begin(plan);
+            warmup.Begin(plan, companion);
+            warmupStatsHidden = true;
+            SetHud(false);
             RunnerWarmupHud.GetOrCreate(world);
             companion.Synchronize();
         }
@@ -43,6 +45,8 @@ namespace StadionTracking
                 plan.Add(new JObject { ["animationId"] = step.animationId, ["seconds"] = step.seconds });
             return new JObject {
                 ["active"] = warmup.Active, ["status"] = warmup.Status, ["finishing"] = warmup.Finishing,
+                ["approaching"] = warmup.Approaching, ["travelDistance"] = warmup.TravelDistance,
+                ["returning"] = warmup.Returning, ["waitingForSpace"] = warmup.WaitingForSpace, ["returnDistance"] = warmup.ReturnDistance,
                 ["stepIndex"] = warmup.StepIndex, ["stepCount"] = warmup.StepCount,
                 ["animationId"] = warmup.AnimationId, ["label"] = warmup.Label,
                 ["stepElapsed"] = warmup.StepElapsed, ["stepDuration"] = warmup.StepDuration,

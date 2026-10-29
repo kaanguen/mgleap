@@ -80,6 +80,11 @@ namespace StadionTracking
         {
             var warmup = world.GetComponent<RunnerWarmup>();
             if (warmup != null && warmup.TryGetGroundPose(out position, out rotation)) return;
+            GetRunGroundPose(out position, out rotation);
+        }
+
+        public void GetRunGroundPose(out Vector3 position, out Quaternion rotation)
+        {
             if (UseSelectedLane || world.RealTrackMode)
             {
                 world.GetLanePoseAtDistance(world.UserDistanceAlongTrack,

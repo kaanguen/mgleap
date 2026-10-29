@@ -16,6 +16,7 @@ namespace StadionTracking
         private RunnerSession session;
         private RunnerAvatarBehaviour avatarBehaviour;
         private Canvas statsCanvas;
+        private bool warmupStatsHidden;
         private MarkerAndAnchorTracker markerTracker;
         private string deviceId;
         private RunnerSessionState state = RunnerSessionState.Stopped;
@@ -170,6 +171,11 @@ namespace StadionTracking
                 avatarBehaviour?.Stop();
             if(nextState==RunnerSessionState.Running && world!=null)RunnerAvatarGreeting.GetOrCreate(world).NotifyRunStarted();
             if((nextState==RunnerSessionState.Running || nextState==RunnerSessionState.Ready) && world!=null)world.GetComponent<RunnerAvatarFinish>()?.Cancel();
+            if (nextState == RunnerSessionState.Running)
+            {
+                warmupStatsHidden = false;
+                SetHud(true);
+            }
             state = nextState;
             world.SessionPaused = nextState != RunnerSessionState.Running;
         }

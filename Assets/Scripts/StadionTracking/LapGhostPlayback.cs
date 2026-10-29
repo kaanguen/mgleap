@@ -116,6 +116,7 @@ namespace StadionTracking
                 nearUser = separation.sqrMagnitude < clearance * clearance;
             }
             holder.SetActive(!nearUser);
+            if (nearUser && warmup != null) warmup.NotifyHiddenApproach();
             if (warmup != null && holder.activeSelf && warmup.Apply(avatar, animator)) return;
             if(world!=null && holder.activeSelf && animator!=null && !locomotion.TryApplyBehaviour())
             {
