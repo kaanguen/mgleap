@@ -114,6 +114,12 @@ namespace StadionTracking
                 nearUser = separation.sqrMagnitude < clearance * clearance;
             }
             holder.SetActive(!nearUser);
+            if(world!=null && holder.activeSelf && animator!=null && !locomotion.TryApplyBehaviour())
+            {
+                var finish=world.GetComponent<RunnerAvatarFinish>();
+                if(finish!=null && finish.Apply(avatar,animator,deltaTime))return;
+                if(RunnerAvatarGreeting.GetOrCreate(world).Apply(avatar,animator,heading,deltaTime))return;
+            }
             Animate((float)(CurrentSpeedKmh / 3.6));
         }
 
@@ -146,6 +152,7 @@ namespace StadionTracking
         private void Animate(float speed)
         {
             if (animator == null) return;
+            if (locomotion.TryApplyBehaviour()) return;
             float rate = locomotion.Apply(speed);
             animator.speed = speed > 0 ? (locomotion.HasPlaybackRate ? 1 : rate) : 0;
         }

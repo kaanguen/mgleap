@@ -14,6 +14,7 @@ namespace StadionTracking
         private StraightTreadmillWorld world;
         private TreadmillCompanion companion;
         private RunnerSession session;
+        private RunnerAvatarBehaviour avatarBehaviour;
         private Canvas statsCanvas;
         private MarkerAndAnchorTracker markerTracker;
         private string deviceId;
@@ -48,6 +49,7 @@ namespace StadionTracking
             companion = FindFirstObjectByType<TreadmillCompanion>();
             session = RunnerSession.GetOrCreate(world);
             session.BindWorld(world);
+            avatarBehaviour = RunnerAvatarBehaviour.GetOrCreate(world);
             var stats = FindFirstObjectByType<ActiveStatsDisplay>();
             statsCanvas = stats != null ? stats.GetComponent<Canvas>() : null;
             SetSessionState(RunnerSessionState.Stopped);
@@ -110,7 +112,7 @@ namespace StadionTracking
             // Independent of server connectivity: show the avatar as soon as XR placement is ready.
             if (startupAvatarPending && companion != null && world.PlacementReady && world.HeightConfirmed)
             {
-                SpawnOnStartLane();
+                SpawnOnSelectedLane();
             }
             int remaining = 32;
             while (remaining-- > 0 && connection != null && connection.TryRead(out var message))
@@ -153,12 +155,17 @@ namespace StadionTracking
         private void Queue(JObject message) => connection?.Send(message.ToString(Newtonsoft.Json.Formatting.None));
         private void PauseRunningSession()
         {
+            avatarBehaviour?.Stop();
             connected = false;
             SetSessionState(state == RunnerSessionState.Running ? RunnerSessionState.Paused : state);
         }
 
         private void SetSessionState(RunnerSessionState nextState)
         {
+            if (nextState == RunnerSessionState.Running || nextState == RunnerSessionState.Ready || nextState == RunnerSessionState.Stopped)
+                avatarBehaviour?.Stop();
+            if(nextState==RunnerSessionState.Running && world!=null)RunnerAvatarGreeting.GetOrCreate(world).NotifyRunStarted();
+            if((nextState==RunnerSessionState.Running || nextState==RunnerSessionState.Ready) && world!=null)world.GetComponent<RunnerAvatarFinish>()?.Cancel();
             state = nextState;
             world.SessionPaused = nextState != RunnerSessionState.Running;
         }

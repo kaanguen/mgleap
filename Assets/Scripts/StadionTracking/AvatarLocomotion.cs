@@ -49,6 +49,12 @@ namespace StadionTracking
             { walkSpeed = 1.5f; runSpeed = 3f; sprintSpeed = 6f; }
         }
 
+        internal bool TryApplyBehaviour()
+        {
+            var behaviour = RunnerAvatarBehaviour.ForScene(animator.gameObject.scene);
+            return behaviour != null && behaviour.ApplyTo(animator);
+        }
+
         // Callers retain their own idle/freeze policy through Animator.speed.
         internal float Apply(float speed, float? legacyBlend = null)
         {

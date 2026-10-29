@@ -156,3 +156,39 @@ Befehl: `runningMate.setCollectibles`, Payload `{"source":"Fixed","fixedCount":1
 Telemetrie: `data.treadmill.collectibles` und `data.runningMate.collectibles` enthalten `source`, `fixedCount`, `rowCount`, `oxygenReady`, `oxygenPercent` (Zahl oder `null`) und `collected`. `data.ble.spo2` liefert ebenfalls den frischen numerischen Sauerstoffwert oder `null`.
 
 Das Dashboard benötigt die neue Unity-Registry; für die Brille ist ein neuer App-Build nötig. Die Sensorlogik wird mit simulierten PLX-Paketen geprüft; ein Test mit dem realen Sauerstoffsensor bleibt separat erforderlich.
+
+## Avatar Behaviour (MarkerML2)
+
+`avatar.playAnimation`: `commandPayload` enthält `animationId` (String, erforderlich),
+`loop` (Boolean, optional, Standard true) und `speed` (Zahl 0.25–2, optional, Standard 1).
+IDs: `Mixamo_BatterOnDeck`, `Mixamo_StartJumpingJacks`, `Mixamo_WarmingUp`, `Mixamo_ArmStretching`, `Mixamo_AirSquat`, `Mixamo_Plank`, `Idle`, `Walking`,
+`Jogging`, `Sprint`. Ein gültiger Befehl benötigt die fertige Platzierung und pausiert
+gegebenenfalls die laufende Session, ohne deren Statistik zurückzusetzen.
+
+`avatar.stopAnimation`: leere Payload. Stellt automatische Locomotion wieder her;
+setzt eine pausierte Session nicht fort.
+
+Registry: `capabilities.avatarBehaviour`, `commands` und `animations` mit Einträgen
+`{id,name,category,duration}`. Telemetrie: `treadmill.behaviour` und
+`runningMate.behaviour` mit `{active,animationId,label,loop,speed,elapsed,duration}`.
+`elapsed` bezeichnet gespielte Clip-Sekunden einschließlich Tempo; bei Wiederholung
+läuft der Zähler weiter. Ohne manuelle Auswahl lautet `animationId` `Automatic`.
+
+Ungültige IDs, unbekannte Payload-Felder, falsche Typen und Tempi außerhalb des
+Bereichs werden vor einer Änderung der Session abgelehnt. Doppelte Command-IDs
+verwenden wie alle anderen Befehle den ACK-Cache.
+
+
+`Mixamo_Plank` ist ein einzelner Ablauf aus Start Plank → Plank (10 Clip-Sekunden Haltephase) → End Plank. Übergänge überblenden jeweils 0,18 s. `loop=true` wiederholt den gesamten Ablauf; `loop=false` spielt inklusive Aufstehen einmal. Das Abspieltempo skaliert alle Phasen (bei 2× sind es 5 reale Sekunden Halten). Explizites Stoppen unterbricht wie bei anderen Clips sofort.
+
+
+Einstellbare Plank-Dauer: `avatar.playAnimation` akzeptiert für `Mixamo_Plank` optional `holdSeconds` (1–300, Standard 10). Die Registry meldet `supportsHoldDuration: true` bei diesem Eintrag. Intro, zyklisches Halten und Outro werden als separate Animator-States gespielt; ein anderer Haltewert verändert nur die Haltephase, nicht das Tempo der Bewegungen. Wie das übrige Animationstempo skaliert `speed` auch die Haltezeit: 30 bei 2× entsprechen 15 realen Sekunden. Nicht-Plank-Clips lehnen `holdSeconds` ab.
+
+
+Die Marker-Begrüßung läuft lokal und automatisch vor dem Laufstart: Winken und zum Nutzer schauen, bei kurzem Anschauen weich beenden. Sie benötigt keine Server-Nachricht. Manuelle `avatar.playAnimation`-Befehle und Laufstart unterbrechen sie.
+
+
+Laufende und Reset sind getrennt: `runningMate.command {action:"stop"}` pausiert die Laufzeit und erhält Distanzen und die aktuellen Weltpositionen beider Avatare. Nach einem laufenden oder pausierten Lauf dreht sich der aktive Avatar vor Ort zum Nutzer, spielt einmal `Standing Thumbs Up` und bleibt danach entspannt zu ihm ausgerichtet. Weitere Stop-Befehle starten die Geste nicht erneut. Pause und Verbindungsabbruch lösen sie nicht aus. `action:"reset"` beendet die Abschlussreaktion und setzt Nutzer-/Ghost-Distanz und Laufzeit auf null; gespeicherte Bestzeiten bleiben erhalten. Start/Fortsetzen und manuelle Animationen beenden die Abschlussreaktion ebenfalls.
+
+
+Avatar-Bahn: Bahn 3 ist nur der anfängliche Standard. `runningMate.setLane` bleibt für den automatischen Spawn sowie `start` und `resume` erhalten. Der Start überschreibt die Auswahl nicht mehr. Beim Abschluss bleibt die Position fixiert; eine zu nahe Daumen-hoch-Geste wartet auf ausreichenden Nutzerabstand.

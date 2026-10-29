@@ -151,7 +151,7 @@ Die Architektur ist komponentenbasiert. Unity-`MonoBehaviour`-Komponenten verbin
 3. Die Session bleibt zunächst gestoppt beziehungsweise pausiert. Der Client bindet den Marker-Tracker an die gemeinsame Laufwelt.
 4. Marker und Bodenfläche werden erfasst. Ein stabiler Scan, eine passende getrackte Floor-Plane samt Polygon und gültiges Headtracking sind erforderlich.
 5. Der Tracker übergibt die bestätigte Bodenpose an `PlaceFromMarkerPlane(...)`.
-6. Laufbahn und Avatar erscheinen automatisch; der Avatar startet auf Bahn 3. Dieser Spawn ist auch ohne Serververbindung möglich.
+6. Laufbahn und Avatar erscheinen automatisch; der Avatar erscheint zunächst standardmäßig auf Bahn 3. Eine anschließend gewählte Bahn bleibt beim Laufstart und Fortsetzen erhalten. Dieser Spawn ist auch ohne Serververbindung möglich.
 7. Das Dashboard konfiguriert Modus und Pace und startet den Lauf ausdrücklich.
 8. Pro Frame werden Weltbewegung beziehungsweise physischer Fortschritt ausgewertet. HUD, Checkpoints und Avatar werden aktualisiert; Telemetrie geht ungefähr mit 5 Hz an den Server.
 
@@ -430,3 +430,45 @@ Server-Session, Serveraufnahme und Unity-Lauf sind getrennte Abläufe. Eine gest
 | Android-Geräte-Build | Build Settings, Android-/XR-Einstellungen, `TreadmillDeviceBuild.cs` |
 
 Weitere Anleitungen: [README.md](README.md), [RunningServer-Protokoll](Docs/RunningServer.md), [BLE-Paket](Packages/com.kaan.ble-sensors/README.md) und [UI-Styleguide](Assets/UI/STYLE_GUIDE_IMPLEMENTATION.md).
+
+## Behaviour – Avatar-Animationen
+
+Der eigene Tab **Behaviour** steuert die Animationen des Jogger-Avatars in MarkerML2.
+Verfügbar sind die originalen Mixamo-Clips Arme & Beine aufwärmen aus Batter On Deck (17,03 s; ohne Schlägerhalten und Schlagen) und
+Jumping Jacks (1,67 s pro Zyklus; Mixamo-Öffnungsbewegung mit umgekehrtem Rückweg, fortlaufend bis zum Stoppen)
+Zusätzlich gibt es Warming Up · ohne Schläge (2,07 s; bis vor die Faustschläge),
+Auch Arm Stretching · Arme dehnen (8,87 s) und Air Squat · Kniebeugen (1,87 s)
+stehen zur Auswahl; sowie Stehen, Gehen, Joggen und Sprinten als Bewegungsvorschau am Platz.
+
+1. Die aktualisierte MarkerML2-App auf der Brille starten und mit dem Server verbinden.
+2. Unter Kalibrierung Bodenmarker und Avatar-Platzierung einrichten.
+3. Behaviour öffnen, optional Wiederholung und Abspieltempo (0,25–2×) einstellen.
+4. Bei einem Clip Abspielen wählen. Ein laufender Lauf wird pausiert; Distanz,
+   Laufzeit und Bestzeiten bleiben erhalten. Die Animation läuft am aktuellen
+   Begleiter – Side by Side oder Tempo-Partner – ohne Root Motion.
+5. Zur Laufbewegung beendet die manuelle Auswahl. Der Lauf bleibt pausiert;
+   im Tab Laufband mit Fortsetzen weiterlaufen.
+
+Ohne Wiederholung endet die Auswahl nach einer Clip-Länge automatisch. Laufstart,
+Fortsetzen, Stoppen, Reset und Verbindungsabbruch beenden ebenfalls die manuelle
+Animation. Fehlende/alte App-Versionen und fehlende Clips werden gesperrt angezeigt.
+Erfolgsmeldungen erscheinen erst nach der Bestätigung aus Unity.
+
+Das Dashboard allein aktualisiert die Unity-App nicht. Für die Brille ist nach
+Übernahme der Unity-Änderungen ein neuer Build erforderlich.
+
+Die Unity-Seite verwendet `RunnerAvatarBehaviour`, die Resource `JoggerBehaviourLibrary`
+und die Animator-States `Behaviour_*` im vorhandenen Controller. Die Asset-Einrichtung
+ist über Tools > Jogger > Install RunningServer behaviour controls wiederholbar.
+
+
+Plank ist im Behaviour-Tab als einzelner Ablauf verfügbar: Start Plank → 10 Sekunden Halten → End Plank. Bei Normaltempo dauert die Sequenz einschließlich Überblendungen etwa 18,34 Sekunden. Wiederholung startet danach den kompletten Ablauf neu.
+
+
+Die Plank-Haltedauer lässt sich im Behaviour-Tab im Feld „Plank halten · Sekunden“ vor dem Abspielen auf 1–300 Sekunden einstellen. Standard ist 10. Bei Normaltempo entspricht die Eingabe der realen Haltezeit; Tempo 2× halbiert sie. Die Änderung gilt ab dem nächsten Abspielen. Dafür die aktualisierte Unity-App mit den drei Plank-States verwenden.
+
+
+Lauf beenden: Die Server-Schaltfläche „Lauf beenden“ stoppt den Avatar dort, wo er sich gerade befindet. Er dreht sich zum Nutzer, spielt die bereitgestellte Mixamo-Animation Standing Thumbs Up einmal ab und bleibt danach zum Nutzer ausgerichtet. Zeit und Distanzen bleiben erhalten. „Lauf zurücksetzen“ ist getrennt: Beide Laufpartner beginnen wieder bei null, ohne Abschlussgeste; Bestzeiten werden erhalten.
+
+
+Abschlussgeste und Abstand: Standing Thumbs Up verwendet die stehende Unterkörperpose ohne die Vorwärtsbewegung der Quellanimation. Kopf und Nacken schauen zum Nutzer, ohne zusätzliche Oberkörperneigung. Unter 1,4 m horizontalem Abstand wird die Arm-Geste unterbrochen bzw. noch nicht gestartet; ab 1,55 m kann sie beginnen. Der Avatar behält seine Endposition.
