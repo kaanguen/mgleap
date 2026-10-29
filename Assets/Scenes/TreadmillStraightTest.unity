@@ -7909,7 +7909,13 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   world: {fileID: 1938132413}
-  collectiblePrefab: {fileID: 3930441200059808538, guid: 87564b8914de24551a8450030e9d1b5f, type: 3}
+  collectiblePrefab: {fileID: 1631473679661796505, guid: 3852ddf9c106845d3aa391784fc2f547, type: 3}
+  spawnSource: 0
+  oxygenSensor: {fileID: 0}
+  oxygenMinimum: 90
+  oxygenMaximum: 100
+  minimumSensorCount: 2
+  maximumSensorCount: 20
   visualScale: 1
   lane: 1
   visibleDistance: 55

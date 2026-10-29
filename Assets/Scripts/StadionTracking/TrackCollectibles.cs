@@ -73,6 +73,7 @@ namespace StadionTracking
         {
             public GameObject Visual;
             public Quaternion BaseRotation;
+            public TrackOxygenBubbleVisual OxygenVisual;
             public double Distance;
         }
         private readonly List<Pickup> active = new List<Pickup>();
@@ -166,7 +167,9 @@ namespace StadionTracking
                 Vector3 position = ground + rotation * new Vector3(Mathf.Sin(phase) * sidewaysWave,
                     hoverHeight + Mathf.Sin(phase) * waveHeight + Mathf.Sin(animationTime * bobFrequency * Mathf.PI * 2 + phase) * bobHeight, 0);
 
-                if (!world.SessionPaused && inReach && ahead <= magnetDistance && ahead >= 0)
+                bool attracting = inReach && ahead <= magnetDistance && ahead >= 0;
+                // Keep the same attraction pose while paused; only time and collection stop.
+                if (attracting)
                 {
                     float attraction = 1 - (float)ahead / Mathf.Max(.2f, magnetDistance);
                     Vector3 chest = head - playerRotation * Vector3.up * .45f;
@@ -174,6 +177,8 @@ namespace StadionTracking
                 }
                 pickup.Visual.transform.SetPositionAndRotation(position,
                     rotation * Quaternion.Euler(0, animationTime * spinDegreesPerSecond, 0) * pickup.BaseRotation);
+                if (pickup.OxygenVisual != null)
+                    pickup.OxygenVisual.Animate(world.HeadCamera, animationTime, attracting, world.SessionPaused);
                 // Swept progress prevents missed pickups at high speed or on a slow frame.
                 bool collected = !world.SessionPaused && inReach && pickup.Distance >= previousProgress - .01 && ahead <= 0;
                 if (collected || ahead < -2)
@@ -220,7 +225,8 @@ namespace StadionTracking
             {
                 var visual = Instantiate(collectiblePrefab, container);
                 visual.transform.localScale *= Mathf.Max(.01f, visualScale);
-                pickup = new Pickup { Visual = visual, BaseRotation = visual.transform.localRotation };
+                pickup = new Pickup { Visual = visual, BaseRotation = visual.transform.localRotation,
+                    OxygenVisual = visual.GetComponent<TrackOxygenBubbleVisual>() };
             }
             pickup.Distance = distance;
             pickup.Visual.SetActive(true);
