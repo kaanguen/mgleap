@@ -51,6 +51,11 @@ namespace StadionTracking
                 ["testMode"] = ghost.TestSpeedEnabled, ["testSpeedKmh"] = ghost.TestSpeedKmh,
                 ["recordedLap"] = ghost.IsRecordedLap, ["hasRecording"] = ghost.HasRecordedLap,
                 ["playbackMode"] = ghost.PlaybackMode };
+            run["behaviour"] = avatarBehaviour == null ? null : new JObject {
+                ["active"] = avatarBehaviour.Active, ["animationId"] = avatarBehaviour.AnimationId,
+                ["label"] = avatarBehaviour.AnimationLabel, ["loop"] = avatarBehaviour.Loop,
+                ["speed"] = avatarBehaviour.PlaybackSpeed, ["elapsed"] = avatarBehaviour.ElapsedSeconds,
+                ["duration"] = avatarBehaviour.DurationSeconds };
             var ble = FindFirstObjectByType<BleConnection>();
             var pickups = world.GetComponent<TrackCollectibles>();
             run["collectibles"] = pickups == null ? null : new JObject {

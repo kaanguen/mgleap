@@ -14,10 +14,12 @@ namespace StadionTracking
                 ["project"] = "MarkerML2",
                 ["avatars"] = new JArray("runner"),
                 ["huds"] = new JArray("stadium"),
+                ["animations"] = AnimationCatalog(),
                 ["capabilities"] = new JObject
                 {
                     ["ambientLightCalibration"] = false,
-                    ["treadmillControl"] = true
+                    ["treadmillControl"] = true,
+                    ["avatarBehaviour"] = Resources.Load<RunnerAvatarAnimationLibrary>(RunnerAvatarBehaviour.LibraryResource) != null
                 },
                 ["commands"] = new JArray(
                     "runningMate.configure", "runningMate.command", "scene.setRunningMatePathVisible",
@@ -25,9 +27,22 @@ namespace StadionTracking
                     "runningMate.setUserSpeed", "avatar.configurePlacement", "avatar.reposition",
                     "scene.recalibrate", "scene.adjustHeight", "runningMate.adjust", "runningMate.setLane",
                     "scene.setTrackEnvironment", "scene.captureTrackPoint", "scene.rescanMarker",
-                    "sensor.connect", "sensor.disconnect", "runningMate.setCollectibles")
+                    "sensor.connect", "sensor.disconnect", "runningMate.setCollectibles",
+                    "avatar.playAnimation", "avatar.stopAnimation")
             }
         };
+
+        private static JArray AnimationCatalog()
+        {
+            var result = new JArray();
+            var library = Resources.Load<RunnerAvatarAnimationLibrary>(RunnerAvatarBehaviour.LibraryResource);
+            if (library == null) return result;
+            foreach (var entry in library.animations)
+                if (entry != null && entry.clip != null)
+                    result.Add(new JObject { ["id"] = entry.id, ["name"] = entry.label,
+                        ["category"] = entry.category, ["duration"] = entry.Duration, ["supportsHoldDuration"] = entry.IsSequence });
+            return result;
+        }
 
         private void Handle(string json)
         {
@@ -69,6 +84,29 @@ namespace StadionTracking
         {
             switch (command)
             {
+                case "avatar.playAnimation":
+                    RunnerCommandValues.RequireFields(p, "avatar.playAnimation", "animationId", "loop", "speed", "holdSeconds");
+                    if (p["animationId"]?.Type != JTokenType.String) throw new ArgumentException("animationId must be a string.");
+                    string animationId = (string)p["animationId"];
+                    bool animationLoop = RunnerCommandValues.Boolean(p, "loop", true);
+                    float animationSpeed = RunnerCommandValues.Decimal(p, "speed", 1, .25f, 2);
+                    float holdSeconds=RunnerCommandValues.Decimal(p,"holdSeconds",10,1,300);
+                    if(p["holdSeconds"]!=null && animationId!="Mixamo_Plank")throw new ArgumentException("holdSeconds is only available for Plank.");
+                    var behaviour = avatarBehaviour ?? (avatarBehaviour = RunnerAvatarBehaviour.GetOrCreate(world));
+                    behaviour.Validate(animationId, animationLoop, animationSpeed,holdSeconds);
+                    if (!world.PlacementReady || !world.HeightConfirmed || !world.HeadPoseReady)
+                        throw new InvalidOperationException("Zuerst Bodenmarker und Avatar-Platzierung unter Kalibrierung einrichten.");
+                    if (companion == null) throw new InvalidOperationException("Companion is unavailable.");
+                    // Validate everything before pausing the running session or changing the avatar.
+                    if (state == RunnerSessionState.Running) SetSessionState(RunnerSessionState.Paused);
+                    companion.enabled = true;
+                    behaviour.Play(animationId, animationLoop, animationSpeed,holdSeconds);
+                    companion.Synchronize();
+                    break;
+                case "avatar.stopAnimation":
+                    RunnerCommandValues.RequireFields(p, "avatar.stopAnimation");
+                    avatarBehaviour?.Stop();
+                    break;
                 case "runningMate.setCollectibles":
                     RunnerCommandValues.RequireFields(p, "collectibles", "source", "fixedCount");
                     var pickups = world.GetComponent<TrackCollectibles>();

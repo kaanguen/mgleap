@@ -146,6 +146,7 @@ namespace StadionTracking
         private void Animate(float speed)
         {
             if (animator == null) return;
+            if (locomotion.TryApplyBehaviour()) return;
             float rate = locomotion.Apply(speed);
             animator.speed = speed > 0 ? (locomotion.HasPlaybackRate ? 1 : rate) : 0;
         }

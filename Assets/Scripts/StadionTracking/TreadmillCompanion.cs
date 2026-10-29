@@ -134,6 +134,7 @@ namespace StadionTracking
             AppliedSpeedMetresPerSecond = world.SessionPaused ? 0f : (1000f / Mathf.Max(1, RunnerSessionSettings.PaceSeconds)) *
                 (UseSelectedLane || world.RealTrackMode ? (float)world.AvatarLaneSpeedScale(world.UserDistanceAlongTrack) : 1);
             if (animator == null) return;
+            if (locomotion.TryApplyBehaviour()) return;
             float rate = locomotion.Apply(AppliedSpeedMetresPerSecond);
             if (!locomotion.HasPlaybackRate) animator.speed = AppliedSpeedMetresPerSecond > 0f ? rate : 1f;
         }
