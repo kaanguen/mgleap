@@ -108,7 +108,9 @@ namespace StadionTracking
         }
         private void Update() => Tick(Time.deltaTime);
 
-        public void Stop()
+        public void Stop() => Clear(0);
+        public void StopSmoothly(float blendSeconds) => Clear(Mathf.Max(0, blendSeconds));
+        private void Clear(float blendSeconds)
         {
             foreach (var pair in applied)
             {
@@ -121,7 +123,8 @@ namespace StadionTracking
                     animator.SetFloat("speed", 0);
                     animator.SetFloat("locomotionRate", 1);
                     // Immediate idle also works for a stationary ghost whose animation is frozen next frame.
-                    animator.Play(AutoState, 0, 0);
+                    if (blendSeconds > 0) animator.CrossFadeInFixedTime(AutoState, blendSeconds, 0, 0);
+                    else animator.Play(AutoState, 0, 0);
                     if (animator.isActiveAndEnabled) animator.Update(0);
                 }
             }

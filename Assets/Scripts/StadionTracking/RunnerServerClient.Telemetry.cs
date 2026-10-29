@@ -56,6 +56,7 @@ namespace StadionTracking
                 ["label"] = avatarBehaviour.AnimationLabel, ["loop"] = avatarBehaviour.Loop,
                 ["speed"] = avatarBehaviour.PlaybackSpeed, ["elapsed"] = avatarBehaviour.ElapsedSeconds,
                 ["duration"] = avatarBehaviour.DurationSeconds };
+            run["warmup"] = WarmupTelemetry();
             var ble = FindFirstObjectByType<BleConnection>();
             var pickups = world.GetComponent<TrackCollectibles>();
             run["collectibles"] = pickups == null ? null : new JObject {

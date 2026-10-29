@@ -50,6 +50,8 @@ namespace StadionTracking
             session = RunnerSession.GetOrCreate(world);
             session.BindWorld(world);
             avatarBehaviour = RunnerAvatarBehaviour.GetOrCreate(world);
+            RunnerWarmup.GetOrCreate(world);
+            RunnerWarmupHud.GetOrCreate(world);
             var stats = FindFirstObjectByType<ActiveStatsDisplay>();
             statsCanvas = stats != null ? stats.GetComponent<Canvas>() : null;
             SetSessionState(RunnerSessionState.Stopped);
@@ -155,6 +157,7 @@ namespace StadionTracking
         private void Queue(JObject message) => connection?.Send(message.ToString(Newtonsoft.Json.Formatting.None));
         private void PauseRunningSession()
         {
+            world?.GetComponent<RunnerWarmup>()?.Stop("Interrupted");
             avatarBehaviour?.Stop();
             connected = false;
             SetSessionState(state == RunnerSessionState.Running ? RunnerSessionState.Paused : state);
@@ -162,6 +165,7 @@ namespace StadionTracking
 
         private void SetSessionState(RunnerSessionState nextState)
         {
+            world?.GetComponent<RunnerWarmup>()?.Stop();
             if (nextState == RunnerSessionState.Running || nextState == RunnerSessionState.Ready || nextState == RunnerSessionState.Stopped)
                 avatarBehaviour?.Stop();
             if(nextState==RunnerSessionState.Running && world!=null)RunnerAvatarGreeting.GetOrCreate(world).NotifyRunStarted();
@@ -191,6 +195,7 @@ namespace StadionTracking
         private void OnApplicationPause(bool paused)
         {
             if (!paused) DisableDimming();
+            else world?.GetComponent<RunnerWarmup>()?.Stop("Interrupted");
         }
     }
 }

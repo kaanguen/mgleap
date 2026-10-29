@@ -43,6 +43,7 @@ namespace StadionTracking
             if(!ready && Active)Cancel(true);
             return ready && !runStarted;
         }
+        internal void NotifyWarmupStarted() { Observe(); Cancel(true); }
         internal void NotifyRunStarted()
         {
             Observe();runStarted=true;Cancel(true);

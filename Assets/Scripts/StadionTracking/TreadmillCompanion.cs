@@ -78,6 +78,8 @@ namespace StadionTracking
 
         private void GetGroundPose(out Vector3 position, out Quaternion rotation)
         {
+            var warmup = world.GetComponent<RunnerWarmup>();
+            if (warmup != null && warmup.TryGetGroundPose(out position, out rotation)) return;
             if (UseSelectedLane || world.RealTrackMode)
             {
                 world.GetLanePoseAtDistance(world.UserDistanceAlongTrack,
@@ -134,6 +136,8 @@ namespace StadionTracking
             AppliedSpeedMetresPerSecond = world.SessionPaused ? 0f : (1000f / Mathf.Max(1, RunnerSessionSettings.PaceSeconds)) *
                 (UseSelectedLane || world.RealTrackMode ? (float)world.AvatarLaneSpeedScale(world.UserDistanceAlongTrack) : 1);
             if (animator == null) return;
+            var warmup = world.GetComponent<RunnerWarmup>();
+            if (warmup != null && warmup.Apply(avatar, animator)) return;
             if (locomotion.TryApplyBehaviour()) return;
             var finish=world.GetComponent<RunnerAvatarFinish>();
             if(finish!=null && finish.Apply(avatar,animator,Time.deltaTime))return;

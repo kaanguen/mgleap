@@ -19,6 +19,7 @@ namespace StadionTracking
                 {
                     ["ambientLightCalibration"] = false,
                     ["treadmillControl"] = true,
+                    ["warmupSequence"] = true,
                     ["avatarBehaviour"] = Resources.Load<RunnerAvatarAnimationLibrary>(RunnerAvatarBehaviour.LibraryResource) != null
                 },
                 ["commands"] = new JArray(
@@ -28,7 +29,8 @@ namespace StadionTracking
                     "scene.recalibrate", "scene.adjustHeight", "runningMate.adjust", "runningMate.setLane",
                     "scene.setTrackEnvironment", "scene.captureTrackPoint", "scene.rescanMarker",
                     "sensor.connect", "sensor.disconnect", "runningMate.setCollectibles",
-                    "avatar.playAnimation", "avatar.stopAnimation")
+                    "avatar.playAnimation", "avatar.stopAnimation",
+                    "exercise.startWarmup", "exercise.stopWarmup", "exercise.nextWarmup")
             }
         };
 
@@ -82,8 +84,28 @@ namespace StadionTracking
 
         private void Apply(string command, JObject p)
         {
+            var activeWarmup = world.GetComponent<RunnerWarmup>();
+            if (activeWarmup != null && activeWarmup.Active &&
+                (command == "avatar.playAnimation" || command == "avatar.stopAnimation" || command == "runningMate.configure" ||
+                 command == "runningMate.setLane" || command == "runningMate.adjust" || command == "avatar.configurePlacement" ||
+                 command == "avatar.reposition" || command == "scene.recalibrate" || command == "scene.adjustHeight" ||
+                 command == "scene.setTrackEnvironment" || command == "scene.captureTrackPoint"))
+                throw new InvalidOperationException("Zuerst den Warm-up-Modus beenden.");
             switch (command)
             {
+                case "exercise.startWarmup":
+                    StartWarmup(p);
+                    break;
+                case "exercise.stopWarmup":
+                    RunnerCommandValues.RequireFields(p, "exercise.stopWarmup");
+                    world.GetComponent<RunnerWarmup>()?.Stop();
+                    companion?.Synchronize();
+                    break;
+                case "exercise.nextWarmup":
+                    RunnerCommandValues.RequireFields(p, "exercise.nextWarmup");
+                    if (activeWarmup == null || !activeWarmup.Active) throw new InvalidOperationException("Kein Warm-up aktiv.");
+                    activeWarmup.Next();
+                    break;
                 case "avatar.playAnimation":
                     RunnerCommandValues.RequireFields(p, "avatar.playAnimation", "animationId", "loop", "speed", "holdSeconds");
                     if (p["animationId"]?.Type != JTokenType.String) throw new ArgumentException("animationId must be a string.");
@@ -118,6 +140,7 @@ namespace StadionTracking
                     pickups.ConfigureSpawning(source == "Fixed" ? CollectibleSpawnSource.Fixed : CollectibleSpawnSource.OxygenSensor, fixedCount);
                     break;
                 case "scene.rescanMarker":
+                    world.GetComponent<RunnerWarmup>()?.Stop();
                     world.BeginMarkerPlacement();
                     startupAvatarPending = true;
                     if (companion != null) companion.enabled = true;
@@ -238,7 +261,7 @@ namespace StadionTracking
                             if (world.PlacementReady) world.ResetDistance();
                             session.ResetSessionStats();
                             break;
-                        case "despawn": world.GetComponent<RunnerAvatarFinish>()?.Cancel(); startupAvatarPending = false; if (companion != null) companion.enabled = false; break;
+                        case "despawn": world.GetComponent<RunnerWarmup>()?.Stop(); world.GetComponent<RunnerAvatarFinish>()?.Cancel(); startupAvatarPending = false; if (companion != null) companion.enabled = false; break;
                         default: throw new ArgumentException("Unsupported running action.");
                     }
                     break;
