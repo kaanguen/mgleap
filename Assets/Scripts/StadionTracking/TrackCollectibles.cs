@@ -183,7 +183,6 @@ namespace StadionTracking
                 bool collected = !world.SessionPaused && inReach && pickup.Distance >= previousProgress - .01 && ahead <= 0;
                 if (collected || ahead < -2)
                 {
-                    if (collected && pickup.OxygenVisual != null) pickup.OxygenVisual.PlayCollected(world.HeadCamera);
                     pickup.Visual.SetActive(false);
                     pool.Push(pickup);
                     active.RemoveAt(i);
