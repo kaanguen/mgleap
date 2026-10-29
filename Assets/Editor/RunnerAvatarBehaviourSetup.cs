@@ -89,12 +89,60 @@ internal static class RunnerAvatarBehaviourSetup
         }
         foreach(var obsolete in machine.states.Where(s=>s.state.name.StartsWith("Behaviour_Warmup_")).ToArray())
             machine.RemoveState(obsolete.state);
+        InstallGreeting(machine);
+        InstallFinish(machine);
         library.animations=entries;
         EditorUtility.SetDirty(library);
         EditorUtility.SetDirty(controller);
         AssetDatabase.SaveAssets();
         Debug.Log("[AvatarBehaviour] Installed 10 manual animation states and runtime clip library.");
     }
+    private static void InstallFinish(AnimatorStateMachine machine)
+    {
+        var source=AssetDatabase.LoadAllAssetsAtPath("Assets/JoggerWarmups/Mixamo/Standing_Thumbs_Up.fbx").OfType<AnimationClip>().First(c=>!c.name.StartsWith("__preview__"));
+        if(!source.humanMotion)throw new InvalidOperationException("Thumbs Up must be Humanoid.");
+        string path=ClipsFolder+"/AutomaticFinishThumbsUp.anim";
+        var clip=AssetDatabase.LoadAssetAtPath<AnimationClip>(path);
+        if(clip==null){clip=UnityEngine.Object.Instantiate(source);AssetDatabase.CreateAsset(clip,path);}else EditorUtility.CopySerialized(source,clip);
+        clip.name="AutomaticFinishThumbsUp";
+        KeepFinishStandingInPlace(clip);
+        var settings=AnimationUtility.GetAnimationClipSettings(clip);settings.loopTime=false;settings.loopBlend=false;AnimationUtility.SetAnimationClipSettings(clip,settings);
+        var state=machine.states.Select(x=>x.state).FirstOrDefault(x=>x.name=="AutomaticFinishThumbsUp")??machine.AddState("AutomaticFinishThumbsUp");
+        state.motion=clip;state.speed=1;state.iKOnFeet=true;
+        RunnerPlankGroundingBaker.Bake(clip,state.name,false);
+        EditorUtility.SetDirty(clip);EditorUtility.SetDirty(state);
+    }
+
+    // The supplied take walks/lunges forward by about .6 m inside its baked
+    // Humanoid body curves. Keep its upper-body gesture on the normal idle stance.
+    private static void KeepFinishStandingInPlace(AnimationClip clip)
+    {
+        var standing=AssetDatabase.LoadAllAssetsAtPath("Assets/Anim/Idle.fbx").OfType<AnimationClip>().First(c=>!c.name.StartsWith("__preview__"));
+        foreach(var binding in AnimationUtility.GetCurveBindings(clip))
+        {
+            string name=binding.propertyName;
+            bool stance=name.StartsWith("RootT.") || name.StartsWith("RootQ.") || name.StartsWith("LeftFoot") || name.StartsWith("RightFoot") || name.Contains("Upper Leg") || name.Contains("Lower Leg") || name.Contains(" Foot ") || name.Contains(" Toes ");
+            if(!stance)continue;
+            var reference=AnimationUtility.GetEditorCurve(standing,binding);if(reference==null)continue;
+            float value=reference.Evaluate(0);
+            AnimationUtility.SetEditorCurve(clip,binding,AnimationCurve.Constant(0,clip.length,value));
+        }
+    }
+
+    private static void InstallGreeting(AnimatorStateMachine machine)
+    {
+        var source=AssetDatabase.LoadAllAssetsAtPath("Assets/JoggerWarmups/Mixamo/Waving.fbx").OfType<AnimationClip>().First(c=>!c.name.StartsWith("__preview__"));
+        if(!source.humanMotion)throw new InvalidOperationException("Waving must be Humanoid.");
+        string path=ClipsFolder+"/AutomaticGreetingWave.anim";
+        var clip=AssetDatabase.LoadAssetAtPath<AnimationClip>(path);
+        if(clip==null){clip=UnityEngine.Object.Instantiate(source);AssetDatabase.CreateAsset(clip,path);}else EditorUtility.CopySerialized(source,clip);
+        clip.name="AutomaticGreetingWave";
+        SmoothWarmupLoop(clip,"AutomaticGreetingWave");
+        var state=machine.states.Select(x=>x.state).FirstOrDefault(x=>x.name=="AutomaticGreetingWave")??machine.AddState("AutomaticGreetingWave");
+        state.motion=clip;state.speed=1;state.iKOnFeet=true;
+        EditorUtility.SetDirty(clip);EditorUtility.SetDirty(state);
+    }
+
     private static AnimationClip CreatePlankPhase(AnimatorStateMachine machine,string baseName,string phase,string file,bool looping)
     {
         var source=AssetDatabase.LoadAllAssetsAtPath("Assets/JoggerWarmups/Mixamo/"+file+".fbx").OfType<AnimationClip>().First(c=>!c.name.StartsWith("__preview__"));
@@ -196,6 +244,7 @@ internal static class RunnerAvatarBehaviourSetup
     internal static void SmoothWarmupLoop(AnimationClip clip,string id)
     {
         float start=0,end=clip.length,overlap=.25f;
+        if(id=="AutomaticGreetingWave")overlap=Mathf.Min(.08f,clip.length*.2f);
         if(id=="Mixamo_BatterOnDeck") {start=1.5f;end=15.9f;overlap=.4f;}
         if(id=="Mixamo_StartJumpingJacks") {start=.2f;end=clip.length-.2f;overlap=.12f;}
         float length=end-start;
@@ -334,6 +383,8 @@ internal static class RunnerAvatarBehaviourSetup
     {
         Install();
         RunnerAvatarBehaviourChecks.Verify();
+        RunnerAvatarGreetingChecks.Verify();
+        RunnerAvatarFinishChecks.Verify();
         Directory.CreateDirectory("Temp/BehaviourIntegration");
         File.WriteAllText("Temp/BehaviourIntegration/result.txt","PASS: imported clips, controller states, companion and tempo-partner playback, once/loop, validation and server commands.\n");
     }

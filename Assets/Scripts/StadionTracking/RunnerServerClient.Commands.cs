@@ -100,6 +100,7 @@ namespace StadionTracking
                     // Validate everything before pausing the running session or changing the avatar.
                     if (state == RunnerSessionState.Running) SetSessionState(RunnerSessionState.Paused);
                     companion.enabled = true;
+                    world.GetComponent<RunnerAvatarFinish>()?.Cancel(false);
                     behaviour.Play(animationId, animationLoop, animationSpeed,holdSeconds);
                     companion.Synchronize();
                     break;
@@ -125,6 +126,7 @@ namespace StadionTracking
                 case "runningMate.setLane":
                     RequireCalibrationReady();
                     int lane = (int)RunnerCommandValues.Number(p, "lane", world.AvatarLane, 1, 8);
+                    world.GetComponent<RunnerAvatarFinish>()?.Cancel();
                     world.SetAvatarLane(lane);
                     if (companion != null) companion.UseLanePlacement();
                     break;
@@ -152,12 +154,14 @@ namespace StadionTracking
                     RunnerCommandValues.RequireFields(p, "placement", "position", "facing", "distance");
                     if (world.RealTrackMode) throw new InvalidOperationException("Use lane selection for avatar placement on a real stadium track.");
                     companion.ConfigurePlacement((string)p["position"], (string)p["facing"], RunnerCommandValues.Decimal(p, "distance", 2, .5f, 20));
+                    world.GetComponent<RunnerAvatarFinish>()?.Cancel();
                     break;
                 case "avatar.reposition":
                 case "scene.recalibrate":
                     RequireCalibrationReady();
                     bool includeHeight = command == "scene.recalibrate" && RunnerCommandValues.Boolean(p, "includeHeight", true);
                     if (!world.RecalibratePlacement(includeHeight)) throw new InvalidOperationException("Head pose cannot be used for calibration. Look horizontally forward and retry.");
+                    world.GetComponent<RunnerAvatarFinish>()?.Cancel();
                     break;
                 case "scene.adjustHeight":
                     RequireCalibrationReady();
@@ -171,6 +175,7 @@ namespace StadionTracking
                     var along = reset ? 0 : RunnerCommandValues.Decimal(p, "along", offsets.y, -100, 100);
                     var heading = reset ? 0 : RunnerCommandValues.Decimal(p, "heading", offsets.z, -180, 180);
                     world.SetCalibrationOffsets(across, along, heading);
+                    world.GetComponent<RunnerAvatarFinish>()?.Cancel();
                     break;
                 case "runningMate.setUserSpeed":
                     if (world.RealTrackMode) throw new InvalidOperationException("The real stadium uses head tracking. Select the treadmill environment for fixed test speed or belt speed.");
@@ -216,20 +221,24 @@ namespace StadionTracking
                         case "spawn":
                             if (!world.PlacementReady || !world.HeightConfirmed)
                                 throw new InvalidOperationException("Place or calibrate the track before spawning the avatar.");
-                            SpawnOnStartLane(); break;
+                            SpawnOnSelectedLane(); break;
                         case "start": case "resume":
                             if (!world.PlacementReady || !world.HeightConfirmed || (world.RealTrackMode && !world.RealTrackCalibrated)) throw new InvalidOperationException("Placement is not ready. Calibrate stadium points A/B first.");
-                            if ((string)p["action"] == "start") SpawnOnStartLane();
+                            if ((string)p["action"] == "start") SpawnOnSelectedLane();
                             else if (companion != null) companion.enabled = true;
                             SetSessionState(RunnerSessionState.Running); break;
                         case "pause": SetSessionState(RunnerSessionState.Paused); break;
-                        case "stop": SetSessionState(RunnerSessionState.Stopped); break;
+                        case "stop":
+                            bool finishRun=state==RunnerSessionState.Running || state==RunnerSessionState.Paused;
+                            SetSessionState(RunnerSessionState.Stopped);
+                            if(finishRun)RunnerAvatarFinish.GetOrCreate(world).Begin(companion,session.GhostPlayback);
+                            break;
                         case "reset":
                             SetSessionState(RunnerSessionState.Ready);
                             if (world.PlacementReady) world.ResetDistance();
                             session.ResetSessionStats();
                             break;
-                        case "despawn": startupAvatarPending = false; if (companion != null) companion.enabled = false; break;
+                        case "despawn": world.GetComponent<RunnerAvatarFinish>()?.Cancel(); startupAvatarPending = false; if (companion != null) companion.enabled = false; break;
                         default: throw new ArgumentException("Unsupported running action.");
                     }
                     break;
@@ -247,10 +256,10 @@ namespace StadionTracking
                 default: throw new NotSupportedException("Command is not implemented by MarkerML2: " + command);
             }
         }
-        private void SpawnOnStartLane()
+        private void SpawnOnSelectedLane()
         {
+            world.GetComponent<RunnerAvatarFinish>()?.Cancel();
             startupAvatarPending = false;
-            world.SetAvatarLane(StraightTreadmillWorld.StartAvatarLane);
             if (companion == null) throw new InvalidOperationException("Companion is unavailable.");
             companion.UseLanePlacement();
             companion.enabled = true;

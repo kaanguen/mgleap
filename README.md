@@ -151,7 +151,7 @@ Die Architektur ist komponentenbasiert. Unity-`MonoBehaviour`-Komponenten verbin
 3. Die Session bleibt zunächst gestoppt beziehungsweise pausiert. Der Client bindet den Marker-Tracker an die gemeinsame Laufwelt.
 4. Marker und Bodenfläche werden erfasst. Ein stabiler Scan, eine passende getrackte Floor-Plane samt Polygon und gültiges Headtracking sind erforderlich.
 5. Der Tracker übergibt die bestätigte Bodenpose an `PlaceFromMarkerPlane(...)`.
-6. Laufbahn und Avatar erscheinen automatisch; der Avatar startet auf Bahn 3. Dieser Spawn ist auch ohne Serververbindung möglich.
+6. Laufbahn und Avatar erscheinen automatisch; der Avatar erscheint zunächst standardmäßig auf Bahn 3. Eine anschließend gewählte Bahn bleibt beim Laufstart und Fortsetzen erhalten. Dieser Spawn ist auch ohne Serververbindung möglich.
 7. Das Dashboard konfiguriert Modus und Pace und startet den Lauf ausdrücklich.
 8. Pro Frame werden Weltbewegung beziehungsweise physischer Fortschritt ausgewertet. HUD, Checkpoints und Avatar werden aktualisiert; Telemetrie geht ungefähr mit 5 Hz an den Server.
 
@@ -466,3 +466,9 @@ Plank ist im Behaviour-Tab als einzelner Ablauf verfügbar: Start Plank → 10 S
 
 
 Die Plank-Haltedauer lässt sich im Behaviour-Tab im Feld „Plank halten · Sekunden“ vor dem Abspielen auf 1–300 Sekunden einstellen. Standard ist 10. Bei Normaltempo entspricht die Eingabe der realen Haltezeit; Tempo 2× halbiert sie. Die Änderung gilt ab dem nächsten Abspielen. Dafür die aktualisierte Unity-App mit den drei Plank-States verwenden.
+
+
+Lauf beenden: Die Server-Schaltfläche „Lauf beenden“ stoppt den Avatar dort, wo er sich gerade befindet. Er dreht sich zum Nutzer, spielt die bereitgestellte Mixamo-Animation Standing Thumbs Up einmal ab und bleibt danach zum Nutzer ausgerichtet. Zeit und Distanzen bleiben erhalten. „Lauf zurücksetzen“ ist getrennt: Beide Laufpartner beginnen wieder bei null, ohne Abschlussgeste; Bestzeiten werden erhalten.
+
+
+Abschlussgeste und Abstand: Standing Thumbs Up verwendet die stehende Unterkörperpose ohne die Vorwärtsbewegung der Quellanimation. Kopf und Nacken schauen zum Nutzer, ohne zusätzliche Oberkörperneigung. Unter 1,4 m horizontalem Abstand wird die Arm-Geste unterbrochen bzw. noch nicht gestartet; ab 1,55 m kann sie beginnen. Der Avatar behält seine Endposition.

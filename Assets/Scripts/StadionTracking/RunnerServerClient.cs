@@ -112,7 +112,7 @@ namespace StadionTracking
             // Independent of server connectivity: show the avatar as soon as XR placement is ready.
             if (startupAvatarPending && companion != null && world.PlacementReady && world.HeightConfirmed)
             {
-                SpawnOnStartLane();
+                SpawnOnSelectedLane();
             }
             int remaining = 32;
             while (remaining-- > 0 && connection != null && connection.TryRead(out var message))
@@ -164,6 +164,8 @@ namespace StadionTracking
         {
             if (nextState == RunnerSessionState.Running || nextState == RunnerSessionState.Ready || nextState == RunnerSessionState.Stopped)
                 avatarBehaviour?.Stop();
+            if(nextState==RunnerSessionState.Running && world!=null)RunnerAvatarGreeting.GetOrCreate(world).NotifyRunStarted();
+            if((nextState==RunnerSessionState.Running || nextState==RunnerSessionState.Ready) && world!=null)world.GetComponent<RunnerAvatarFinish>()?.Cancel();
             state = nextState;
             world.SessionPaused = nextState != RunnerSessionState.Running;
         }

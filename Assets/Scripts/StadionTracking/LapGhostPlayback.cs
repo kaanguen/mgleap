@@ -114,6 +114,12 @@ namespace StadionTracking
                 nearUser = separation.sqrMagnitude < clearance * clearance;
             }
             holder.SetActive(!nearUser);
+            if(world!=null && holder.activeSelf && animator!=null && !locomotion.TryApplyBehaviour())
+            {
+                var finish=world.GetComponent<RunnerAvatarFinish>();
+                if(finish!=null && finish.Apply(avatar,animator,deltaTime))return;
+                if(RunnerAvatarGreeting.GetOrCreate(world).Apply(avatar,animator,heading,deltaTime))return;
+            }
             Animate((float)(CurrentSpeedKmh / 3.6));
         }
 

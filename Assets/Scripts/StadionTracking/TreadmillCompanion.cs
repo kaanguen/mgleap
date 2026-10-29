@@ -135,6 +135,9 @@ namespace StadionTracking
                 (UseSelectedLane || world.RealTrackMode ? (float)world.AvatarLaneSpeedScale(world.UserDistanceAlongTrack) : 1);
             if (animator == null) return;
             if (locomotion.TryApplyBehaviour()) return;
+            var finish=world.GetComponent<RunnerAvatarFinish>();
+            if(finish!=null && finish.Apply(avatar,animator,Time.deltaTime))return;
+            if (RunnerAvatarGreeting.GetOrCreate(world).Apply(avatar,animator,heading,Time.deltaTime)) return;
             float rate = locomotion.Apply(AppliedSpeedMetresPerSecond);
             if (!locomotion.HasPlaybackRate) animator.speed = AppliedSpeedMetresPerSecond > 0f ? rate : 1f;
         }

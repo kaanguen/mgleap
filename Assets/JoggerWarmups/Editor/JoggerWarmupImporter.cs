@@ -51,7 +51,7 @@ public sealed class JoggerWarmupImporter : AssetPostprocessor
     [MenuItem("Tools/Jogger/Configure Mixamo animation imports")]
     public static void ConfigureAll()
     {
-        foreach(var name in new[]{"Batter_On_Deck","Start_Jumping_Jacks","Warming_Up","Arm_Stretching","Air_Squat","Start_Plank","Plank","End_Plank"})
+        foreach(var name in new[]{"Batter_On_Deck","Start_Jumping_Jacks","Warming_Up","Arm_Stretching","Air_Squat","Start_Plank","Plank","End_Plank","Waving","Standing_Thumbs_Up"})
         {
             var importer=AssetImporter.GetAtPath(Folder+name+".fbx") as ModelImporter;
             if(importer==null)continue;
