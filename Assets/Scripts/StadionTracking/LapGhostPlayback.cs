@@ -101,6 +101,8 @@ namespace StadionTracking
             else
                 world.GetLanePoseAtDistance(TravelledMetres, world.AvatarLane, out ground, out heading);
             if (runner != null) ground += heading * Vector3.right * laneOffsetMetres;
+            var warmup = world != null ? world.GetComponent<RunnerWarmup>() : null;
+            if (warmup != null && warmup.Active) warmup.TryGetGroundPose(out ground, out heading);
             avatar.transform.SetPositionAndRotation(ground - Vector3.up * soleOffset, heading);
             // Head tracking can move the user away from the calibrated belt centre.
             // Never move the ghost forward to avoid overlap: that would falsify the race gap.
@@ -114,6 +116,8 @@ namespace StadionTracking
                 nearUser = separation.sqrMagnitude < clearance * clearance;
             }
             holder.SetActive(!nearUser);
+            if (nearUser && warmup != null) warmup.NotifyHiddenApproach();
+            if (warmup != null && holder.activeSelf && warmup.Apply(avatar, animator)) return;
             if(world!=null && holder.activeSelf && animator!=null && !locomotion.TryApplyBehaviour())
             {
                 var finish=world.GetComponent<RunnerAvatarFinish>();

@@ -75,7 +75,7 @@ internal static class RunnerAvatarBehaviourSetup
             state.speedParameterActive=true;
             state.writeDefaultValues=true;
             // No transitions out: session start/stop or explicit return restores normal locomotion.
-            entries[i]=new RunnerAvatarAnimation {id=spec[0],label=spec[1],category=spec[2],clip=clip,stateName=stateName};
+            entries[i]=new RunnerAvatarAnimation {id=spec[0],label=RunnerAnimationNames.For(spec[0],spec[1]),category=spec[2],clip=clip,stateName=stateName};
             if(spec[0]=="Mixamo_Plank")
             {
                 var sequence=entries[i];

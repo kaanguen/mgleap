@@ -216,6 +216,7 @@ namespace StadionTracking
             ? oval.LaneSpeedScale(AvatarLane, GetTrackDistance(distance)) : 1;
         public Vector3 CalibrationOffsets { get; private set; }
         public float SurfaceHeight => surfaceHeight;
+        public float FloorHeightAt(Vector3 point) => requireMarkerPlacement && MarkerFloorConfirmed ? DetectedFloorHeightAt(point) : surfaceHeight;
 
         private void ApplyCurrentPose()
         {

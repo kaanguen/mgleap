@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   animations:
   - id: Mixamo_BatterOnDeck
-    label: "Arme & Beine aufw\xE4rmen"
+    label: Arme und Beine
     category: Warmup
     clip: {fileID: 7400000, guid: 03ea3eb7263f14c81847ad84ef94a385, type: 2}
     stateName: Behaviour_Mixamo_BatterOnDeck
@@ -22,7 +22,7 @@ MonoBehaviour:
     holdClip: {fileID: 0}
     endClip: {fileID: 0}
   - id: Mixamo_StartJumpingJacks
-    label: Start Jumping Jacks
+    label: "Hampelm\xE4nner"
     category: Warmup
     clip: {fileID: 7400000, guid: 7ab5ba54f19364a3f8fea54fe3507f05, type: 2}
     stateName: Behaviour_Mixamo_StartJumpingJacks
@@ -30,7 +30,7 @@ MonoBehaviour:
     holdClip: {fileID: 0}
     endClip: {fileID: 0}
   - id: Mixamo_WarmingUp
-    label: "Warming Up \xB7 ohne Schl\xE4ge"
+    label: "Aufw\xE4rmen"
     category: Warmup
     clip: {fileID: 7400000, guid: feb58db6cff5a456fb0073358152beb1, type: 2}
     stateName: Behaviour_Mixamo_WarmingUp
@@ -38,7 +38,7 @@ MonoBehaviour:
     holdClip: {fileID: 0}
     endClip: {fileID: 0}
   - id: Mixamo_ArmStretching
-    label: "Arm Stretching \xB7 Arme dehnen"
+    label: Arme dehnen
     category: Warmup
     clip: {fileID: 7400000, guid: 9ed993dcfa94b43f5b175f1079cd3a3f, type: 2}
     stateName: Behaviour_Mixamo_ArmStretching
@@ -46,7 +46,7 @@ MonoBehaviour:
     holdClip: {fileID: 0}
     endClip: {fileID: 0}
   - id: Mixamo_AirSquat
-    label: "Air Squat \xB7 Kniebeugen"
+    label: Kniebeugen
     category: Warmup
     clip: {fileID: 7400000, guid: 1d1347e7e1bcc4023831cd07002d5328, type: 2}
     stateName: Behaviour_Mixamo_AirSquat
@@ -54,7 +54,7 @@ MonoBehaviour:
     holdClip: {fileID: 0}
     endClip: {fileID: 0}
   - id: Mixamo_Plank
-    label: "Plank \xB7 Start, halten, Ende"
+    label: "Unterarmst\xFCtz"
     category: Warmup
     clip: {fileID: 7400000, guid: 00f0d2fa537e24cbeb7aabbe7519ef72, type: 2}
     stateName: Behaviour_Mixamo_Plank
@@ -62,7 +62,7 @@ MonoBehaviour:
     holdClip: {fileID: 7400000, guid: 9580f31d0142549eab39b99188fa30ec, type: 2}
     endClip: {fileID: 7400000, guid: 9c1cb8d5b75fe4517bc311f6f4f988f0, type: 2}
   - id: Idle
-    label: Ruhig stehen
+    label: Stehen
     category: Locomotion
     clip: {fileID: 7400000, guid: 432a7b5521725420eb0804966afaa1e7, type: 2}
     stateName: Behaviour_Idle
