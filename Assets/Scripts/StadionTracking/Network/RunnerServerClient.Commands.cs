@@ -28,7 +28,7 @@ namespace StadionTracking
                     "runningMate.setUserSpeed", "avatar.configurePlacement", "avatar.reposition",
                     "scene.recalibrate", "scene.adjustHeight", "runningMate.adjust", "runningMate.setLane",
                     "scene.setTrackEnvironment", "scene.captureTrackPoint", "scene.rescanMarker",
-                    "sensor.connect", "sensor.disconnect", "runningMate.setCollectibles",
+                    "sensor.startScan", "sensor.stopScan", "sensor.connect", "sensor.disconnect", "runningMate.setCollectibles",
                     "avatar.playAnimation", "avatar.stopAnimation",
                     "exercise.startWarmup", "exercise.stopWarmup", "exercise.nextWarmup")
             }
@@ -272,11 +272,28 @@ namespace StadionTracking
                     if ((string)p["id"] != "stadium") throw new ArgumentException("Only the stadium HUD exists.");
                     SetHud(RunnerCommandValues.Boolean(p, "visible")); break;
                 case "scene.setRunningMateHudVisible": SetHud(RunnerCommandValues.Boolean(p, "visible")); break;
-                case "sensor.connect": case "sensor.disconnect":
-                    var ble = FindFirstObjectByType<BleConnection>();
+                case "sensor.startScan": case "sensor.stopScan": case "sensor.connect": case "sensor.disconnect":
+                    RunnerCommandValues.RequireFields(p, command, command == "sensor.connect" ? new[] { "deviceId" } : new string[0]);
+                    var ble = FindBleConnection();
                     if (ble == null) throw new InvalidOperationException("No BLE component in this scene.");
+                    // Run sensor data in the background without opening the old headset panel.
+                    if (command == "sensor.startScan" || command == "sensor.connect")
+                    {
+                        PrepareRemoteBle(ble);
+                    }
                     if (command == "sensor.disconnect") ble.Disconnect();
-                    else { if (ble.DeviceIds.Count == 0) throw new InvalidOperationException("No discovered BLE device. Scan and select a device first."); ble.Connect(); }
+                    else if (command == "sensor.stopScan") ble.StopScan();
+                    else if (command == "sensor.startScan")
+                    { if (!ble.TryStartScan(out string scanError)) throw new InvalidOperationException(scanError); }
+                    else
+                    {
+                        var deviceToken = p["deviceId"];
+                        if (deviceToken != null && (deviceToken.Type != JTokenType.String || string.IsNullOrWhiteSpace((string)deviceToken)))
+                            throw new ArgumentException("deviceId must be a non-empty string.");
+                        string deviceId = deviceToken != null ? (string)deviceToken :
+                            ble.SelectedIndex >= 0 && ble.SelectedIndex < ble.DeviceIds.Count ? ble.DeviceIds[ble.SelectedIndex] : null;
+                        if (!ble.TryConnectDevice(deviceId, out string connectError)) throw new InvalidOperationException(connectError);
+                    }
                     break;
                 default: throw new NotSupportedException("Command is not implemented by MarkerML2: " + command);
             }

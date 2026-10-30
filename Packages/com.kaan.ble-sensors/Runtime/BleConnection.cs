@@ -8,7 +8,7 @@ using UnityEngine.Android;
 
 public class BleConnection : MonoBehaviour
 {
-    [Tooltip("Filter und Datenkanäle. Nur im getrennten Zustand wechseln.")]
+    [Tooltip("Datenkanäle. Der Scan zeigt unabhängig vom Profil alle Geräte. Nur im getrennten Zustand wechseln.")]
     public BleDeviceProfile profile;
     BleDeviceProfile fallbackProfile;
     public BleDeviceProfile Profile => profile != null ? profile : (fallbackProfile != null ? fallbackProfile : (fallbackProfile = CreateFallbackProfile()));
@@ -47,6 +47,15 @@ public class BleConnection : MonoBehaviour
     public event Action<string> GattError;
     readonly HashSet<string> foundCharacteristics = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     public string ConnectedDeviceId => connectedId;
+    public string ConnectedDeviceName
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(connectedId)) return null;
+            int index = DeviceIds.FindIndex(id => string.Equals(id, connectedId, StringComparison.OrdinalIgnoreCase));
+            return index >= 0 && index < DeviceNames.Count ? DeviceNames[index] : "Ohne Namen";
+        }
+    }
     public bool HasCharacteristic(string service, string characteristic) => foundCharacteristics.Contains(BleUuid.Key(service, characteristic));
     public void ShowStatus(string text) { SetStatus(text); }
     public readonly List<string> DeviceIds = new List<string>();
@@ -54,6 +63,7 @@ public class BleConnection : MonoBehaviour
     public string Status { get; private set; } = "Bereit. Scan drücken.";
     public bool Scanning { get; private set; }
     public bool Busy { get; private set; }
+    public bool Initializing => requesting;
     public bool Connected { get; private set; }
     public int SelectedIndex { get; private set; }
 
@@ -62,8 +72,8 @@ public class BleConnection : MonoBehaviour
     DiscoverDevices scan;
     ConnectToDevice connection;
     string connectedId;
-    bool requesting, shuttingDown, gattOpen;
-    float connectionDeadline, scanRestartAfter;
+    bool requesting, shuttingDown, gattOpen, applicationPaused;
+    float connectionDeadline, scanRestartAfter, scanFocusReadyAfter;
 
     void Notify() { Changed?.Invoke(); }
     void SetStatus(string text) { Status = text; Debug.Log("[BLE] " + text); Notify(); }
@@ -81,6 +91,17 @@ public class BleConnection : MonoBehaviour
 #else
         SetStatus("BLE funktioniert hier nur im Android-Build auf der Brille.");
 #endif
+    }
+
+    public bool TryStartScan(out string error)
+    {
+        error = null;
+        if (requesting || Busy || Connected || Scanning)
+        { error = "Suche oder Verbindung bereits aktiv. Gegebenenfalls zuerst trennen."; return false; }
+        StartScan();
+        if (requesting || Scanning) return true;
+        error = Status;
+        return false;
     }
 
     IEnumerator InitializeAndScan()
@@ -132,6 +153,24 @@ public class BleConnection : MonoBehaviour
                 requesting = false; SetStatus("Initialisierung: " + e.Message); yield break;
             }
         }
+        // The upstream initializer requests Android-12 permissions even on Android 10.
+        // Its brief permission Activity pauses Unity asynchronously. Keep initialization
+        // protected until focus and lifecycle events have settled, then begin the scan.
+        scanFocusReadyAfter = Time.realtimeSinceStartup + .5f;
+        float focusDeadline = Time.realtimeSinceStartup + 90;
+        SetStatus("Bluetooth wird vorbereitet. Warte auf aktive Brillen-App …");
+        while (true)
+        {
+            if (Time.realtimeSinceStartup > focusDeadline)
+            { requesting = false; SetStatus("Brillen-App nicht aktiv. Zur App zurückkehren und erneut suchen."); yield break; }
+            if (applicationPaused || !Application.isFocused) scanFocusReadyAfter = Time.realtimeSinceStartup + .5f;
+            else if (Time.realtimeSinceStartup >= scanFocusReadyAfter) break;
+            yield return null;
+        }
+        string scanError = null;
+        try { AndroidBleScanSupport.PrepareScan(apiLevel: AndroidBleScanSupport.ApiLevel); }
+        catch (Exception e) { scanError = e.Message; }
+        if (scanError != null) { requesting = false; SetStatus("BLE-Suche nicht möglich: " + scanError); yield break; }
         requesting = false;
         DeviceIds.Clear(); DeviceNames.Clear(); SelectedIndex = 0;
         scan = new DiscoverDevices(OnDeviceFound, OnScanFinished, scanSeconds * 1000);
@@ -146,7 +185,7 @@ public class BleConnection : MonoBehaviour
     void OnDeviceFound(string id, string name)
     {
         if (!Scanning || string.IsNullOrEmpty(id)) return;
-        if (!Profile.Matches(id, name)) return;
+        // Discovery is deliberately unfiltered; profiles only describe data channels.
         int index = DeviceIds.FindIndex(x => string.Equals(x, id, StringComparison.OrdinalIgnoreCase));
         if (index < 0) { DeviceIds.Add(id); DeviceNames.Add(string.IsNullOrEmpty(name) ? "Ohne Namen" : name); }
         else if (!string.IsNullOrEmpty(name)) DeviceNames[index] = name;
@@ -154,19 +193,39 @@ public class BleConnection : MonoBehaviour
     }
     void OnScanFinished()
     {
+        if (!Scanning) return;
         Scanning = false;
         SetStatus(DeviceIds.Count > 0
-            ? "Scan beendet: " + DeviceIds.Count + " passende Geräte. Gerät auswählen."
-            : "Keine Geräte passend zum Geräteprofil gefunden.");
+            ? "Scan beendet: " + DeviceIds.Count + " Geräte. Gerät auswählen."
+            : "Keine BLE-Sendesignale empfangen. Gerät in Such-/Werbemodus bringen; Bluetooth-Classic-Geräte erscheinen hier nicht.");
     }
     public void StopScan()
     {
+        if (requesting) { StopAllCoroutines(); requesting = false; SetStatus("Suche abgebrochen."); }
         if (!Scanning) return;
         Scanning = false;
         try { scan?.End(); } catch (Exception e) { SetStatus(e.Message); }
-        scan = null; Notify();
+        scan = null; SetStatus("Suche gestoppt.");
     }
-    public void SelectDevice(int index) { SelectedIndex = index; }
+    public void SelectDevice(int index)
+    {
+        if (Busy || Connected || index < 0 || index >= DeviceIds.Count) return;
+        SelectedIndex = index; Notify();
+    }
+    public bool TryConnectDevice(string deviceId, out string error)
+    {
+        error = null;
+        if (requesting || Busy || Connected)
+        { error = "Verbindung bereits aktiv oder Initialisierung läuft. Zuerst trennen oder warten."; return false; }
+        int index = DeviceIds.FindIndex(id => string.Equals(id, deviceId, StringComparison.OrdinalIgnoreCase));
+        if (string.IsNullOrWhiteSpace(deviceId) || index < 0)
+        { error = "Gerät nicht in der aktuellen Suchliste. Erneut suchen und auswählen."; return false; }
+        SelectDevice(index);
+        Connect();
+        if (Busy || Connected) return true;
+        error = Status;
+        return false;
+    }
     public void Connect()
     {
         if (Busy || Connected || manager == null) return;
@@ -256,7 +315,13 @@ public class BleConnection : MonoBehaviour
         if (Connected) operations?.Tick(Time.realtimeSinceStartup);
         if (Scanning && Time.realtimeSinceStartup > scanRestartAfter + 2) StopScan();
     }
-    protected virtual void OnApplicationPause(bool paused) { if (paused && !requesting) Disconnect(); }
+    protected virtual void OnApplicationPause(bool paused)
+    {
+        applicationPaused = paused;
+        scanFocusReadyAfter = Time.realtimeSinceStartup + .5f;
+        if (paused && !requesting) Disconnect();
+    }
+    protected virtual void OnApplicationFocus(bool focused) => scanFocusReadyAfter = Time.realtimeSinceStartup + .5f;
     protected virtual void OnDisable()
     {
         StopAllCoroutines(); requesting=false; Disconnect();

@@ -19,7 +19,7 @@ adb devices
 adb reverse tcp:8081 tcp:8081
 ```
 
-Die aktuelle WLAN-Adresse in `Assets/Resources/RunnerServer.json` ist `ws://192.168.178.120:8081/ws`. Bei einem Wechsel der Mac-IP muss sie angepasst werden. Eine `runner-server.json` in `Application.persistentDataPath` überschreibt diese Adresse ohne Neubau; auf Android liegt sie unter `/sdcard/Android/data/com.testingCorp.MarkerML2/files/runner-server.json`. Für USB-Portweiterleitung dort stattdessen `ws://127.0.0.1:8081/ws` eintragen.
+Die WLAN-Adresse wird in Unity unter **Tools → RunningServer → Serveradresse einstellen** geändert und in `Assets/Resources/RunnerServer.json` gespeichert. Das Fenster bietet die erkannten IPv4-Adressen des Rechners sowie eine USB-Vorlage an. Danach die App neu bauen und installieren. Mit `preferBundledAddress: true` (Schalter **Build-Adresse beim App-Start bevorzugen**) startet die App mit der Build-Adresse und ignoriert frühere Geräte-Eingaben. Ohne diese Option hat `runner-server.json` in `Application.persistentDataPath` Vorrang; auf Android liegt sie unter `/sdcard/Android/data/com.testingCorp.MarkerML2/files/runner-server.json`. Der Brillen-Dialog kann die Adresse weiterhin für die laufende Sitzung ändern. USB-Portweiterleitung verwendet `ws://127.0.0.1:8081/ws`.
 
 ## Verbindung
 
@@ -71,7 +71,8 @@ Bei Fehlern: `success: false` und `error`. Fehlende Bestätigungen laufen nach z
 | `scene.setRunningMatePathVisible` | `visible` (Boolean). Blendet die Bahn ein/aus. |
 | `scene.setRunningMateHudVisible` | `visible` (Boolean). Blendet das Headset-HUD ein/aus. |
 | `scene.setHudVisible` | `id: "stadium"`, `visible` (Boolean). |
-| `sensor.connect` / `sensor.disconnect` | Vorhandene BLE-Komponente verwenden. Verbinden verlangt bereits entdeckte Geräte. Keine automatische neue BLE-Suche über diese Befehle. |
+| `sensor.startScan` / `sensor.stopScan` | BLE-Suche auf der Brille starten/stoppen, Payload `{}`. Alle gefundenen BLE-Geräte erscheinen unabhängig vom Namen und Profil, auch namenlose. Der Scan läuft ohne Einblenden des alten Sensorfensters; die übrige Brillen-UI bleibt erhalten. Android-Berechtigungen gegebenenfalls auf der Brille bestätigen. Bluetooth-Classic-Geräte ohne BLE-Werbesignal sind nicht Teil dieser Suche. |
+| `sensor.connect` / `sensor.disconnect` | Mit `{ "deviceId": "Kennung aus der Suchliste" }` ein gefundenes Gerät verbinden; Trennen mit `{}` bricht auch einen Verbindungsversuch ab. Ohne `deviceId` bleibt die bisherige lokale Auswahl kompatibel. ACK bestätigt den Auftrag; der tatsächliche Verbindungszustand folgt per Telemetrie. |
 
 Kompatibilitätsbefehle bleiben im Code: `heightCm` bei `runningMate.configure`, `scene.recalibrate` mit `includeHeight` und `scene.adjustHeight` mit `deltaMetres`. Bei Marker-/Plane-Platzierung bestimmt ausschließlich die erkannte Boden-Plane die Höhe; manuelle Höhenänderungen werden abgewiesen. Eine erneute Ausrichtung verwendet den gespeicherten Markeranker. Die Körpergröße beeinflusst die Marker-Platzierung nicht.
 
@@ -117,7 +118,7 @@ Unity sendet ungefähr mit 5 Hz ein `telemetry`-Objekt. Die aktuellen Laufwerte 
 | `ghost` | `active`, `distance`, `trackPositionMetres`, `speedKmh`, `gapMetres`, `testMode`, `testSpeedKmh`, `recordedLap`, `hasRecording`, `playbackMode` (`TestSpeed`/`RecordedLap`/`TargetPace`) |
 | `records` | `fastest100mSeconds`, `bestLapSeconds`, `fastest1KmSeconds`: gemessene Zeiten oder `null` |
 
-Zusätzlich: `data.ble.connected`, `data.ble.spo2` (frischer gültiger SpO₂-Wert oder `null`) und `data.huds.stadium`. Andere BLE-Vitalwerte und Übungserkennungen werden von dieser Brücke noch nicht geliefert. Verschachtelte Objekte im Relay werden ersetzt; der Client sendet vollständige Teilobjekte.
+Zusätzlich enthält `data.ble` die Felder `available`, `connected`, `initializing`, `scanning`, `connecting`, `status`, `deviceId`, `deviceName`, `selectedDeviceId` und `devices` (Suchliste aus `{id, name}`). `connectedDevices` ist eine separate Liste tatsächlich verbundener Geräte mit `{id, name}`; die aktuelle Implementierung unterstützt ein BLE-Gerät gleichzeitig. Die Kennung bestimmt die Auswahl, nicht die Listenposition. Die Vitalwerte `hr` (BPM), `temperature` (°C), `spo2` (%), `pr` (BPM) und `pi` (%) sind frische gültige Zahlen oder `null`. Die Werte werden direkt aus den dekodierten Sensorpaketen gewonnen, nicht aus UI-Texten. Abgelaufene, ungültige und nach Trennung nicht mehr verfügbare Werte bleiben nicht als Live-Messung stehen. Die Dashboard-Anzeige blendet zusätzlich bei veralteter Telemetrie die Werte aus. Das bestehende Server-CSV enthält dieselben Felder. `data.huds.stadium` meldet das HUD. Übungserkennungen werden von dieser Brücke noch nicht geliefert. Verschachtelte Objekte im Relay werden ersetzt; der Client sendet vollständige Teilobjekte.
 
 ## Persönliche Bestleistungen auf der Brille
 
@@ -147,7 +148,7 @@ Der Marker-/Floor-Ray-Spawn wurde mit Marker 39 auf der Magic Leap 2 bestätigt:
 Im Dashboard unter **Laufband → Sammelkugeln** die Quelle auswählen und mit **Kugelmenge anwenden** an die Brille senden:
 
 - **Feste Eingabe:** 0–30 Kugeln pro Reihe, unabhängig vom Sensor. 0 schaltet die Kugeln aus. Standard: 10.
-- **Sauerstoffsensor:** aktuelle, gültige SpO₂-Pakete der bestehenden BLE-Verbindung bestimmen die Anzahl. Der vorhandene Sensor-Dialog auf der Brille wird beim Auswählen geöffnet; dort scannen und verbinden. Ohne frische Daten, bei Warnstatus oder nach einer Trennung entstehen keine Kugeln.
+- **Sauerstoffsensor:** aktuelle, gültige SpO₂-Pakete der bestehenden BLE-Verbindung bestimmen die Anzahl. Die Verbindung kann unter **Sensoren & Session** im Dashboard über die ungefilterte Geräteliste eingerichtet werden; der vorhandene Sensor-Dialog auf der Brille bleibt ebenfalls nutzbar. Ohne frische Daten, bei Warnstatus oder nach einer Trennung entstehen keine Kugeln.
 
 Standard-Spielzuordnung: 90 % → 2 Kugeln, 100 % → 20 Kugeln pro Reihe, dazwischen linear gerundet und an den Enden begrenzt. Die Zuordnung ist in `TrackCollectibles` im Inspector einstellbar. Reihen bleiben beim Mengenwechsel räumlich verankert; der Sammelzähler bleibt erhalten. Das 3D-Objekt ist weiterhin über **VirtualWorld → Track Collectibles → Collectible Prefab** austauschbar.
 

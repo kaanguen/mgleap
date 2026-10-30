@@ -14,8 +14,8 @@ def constant(source, name):
 
 # Generate the single-lane PNG from the shared geometry and map dimensions.
 def main():
-    geometry = (SCRIPTS / 'StadiumTrackGeometry.cs').read_text()
-    mapping = (SCRIPTS / 'SimpleTrackMap.cs').read_text()
+    geometry = (SCRIPTS / 'World/StadiumTrackGeometry.cs').read_text()
+    mapping = (SCRIPTS / 'UI/SimpleTrackMap.cs').read_text()
     width = int(constant(mapping, 'PixelWidth'))
     height = int(constant(mapping, 'PixelHeight'))
     scale = constant(mapping, 'PixelsPerMetre')

@@ -17,6 +17,8 @@ public class SensorMeasurements : MonoBehaviour
         public bool Received, Waiting;
         public float At;
         public double OxygenPercent = double.NaN;
+        public double HeartRateBpm = double.NaN, TemperatureCelsius = double.NaN;
+        public double PulseBpm = double.NaN, PerfusionPercent = double.NaN;
         public bool MaximumQuality;
         public string Quality="—", Hint="noch kein Hinweis empfangen";
         public float HintAt=-1;
@@ -27,6 +29,26 @@ public class SensorMeasurements : MonoBehaviour
     Value heartRate;
     public string Measurement => heartRate == null ? "— bpm" : heartRate.Text;
     public string RrIntervals { get; private set; } = "";
+    public bool TryGetHeartRateBpm(out double value) => TryGetFreshNumber(BleValueFormat.HeartRate, v => v.HeartRateBpm, out value);
+    public bool TryGetTemperatureCelsius(out double value) => TryGetFreshNumber(BleValueFormat.Temperature, v => v.TemperatureCelsius, out value);
+    public bool TryGetPulseBpm(out double value) => TryGetFreshNumber(BleValueFormat.PulseOximeter, v => v.PulseBpm, out value);
+    public bool TryGetPerfusionPercent(out double value) => TryGetFreshNumber(BleValueFormat.PulseOximeter, v => v.PerfusionPercent, out value);
+
+    private bool TryGetFreshNumber(BleValueFormat format, Func<Value, double> read, out double number)
+    {
+        number = double.NaN;
+        if (!isActiveAndEnabled || bluetooth == null || !bluetooth.Connected) return false;
+        foreach (var value in ordered)
+        {
+            if (value.Channel.format != format || !value.Received ||
+                Time.realtimeSinceStartup - value.At > value.Channel.staleSeconds) continue;
+            double candidate = read(value);
+            if (double.IsNaN(candidate) || double.IsInfinity(candidate)) continue;
+            number = candidate;
+            return true;
+        }
+        return false;
+    }
     // Numeric data for gameplay/telemetry; never parse the localized UI text.
     public bool TryGetOxygenPercent(out double percent) {
         percent=double.NaN;
@@ -117,6 +139,7 @@ public class SensorMeasurements : MonoBehaviour
         switch (channel.format) {
             case BleValueFormat.HeartRate:
                 var hr=HeartRateParser.ParseMeasurement(bytes);
+                value.HeartRateBpm = hr.Bpm > 0 ? hr.Bpm : double.NaN;
                 var rr=new List<string>();
                 for (int i=0;i<Math.Min(3,hr.RrMilliseconds.Length);i++) rr.Add(hr.RrMilliseconds[i].ToString("0.#",CultureInfo.InvariantCulture));
                 if (heartRate!=null && channel==heartRate.Channel)
@@ -124,10 +147,13 @@ public class SensorMeasurements : MonoBehaviour
                 return hr.Bpm+" bpm";
             case BleValueFormat.Temperature:
                 var t=CosinussParsers.Temperature(bytes);
+                value.TemperatureCelsius = t.Special == null ? t.Celsius : double.NaN;
                 return Number(t.Celsius," °C")+(t.Special==null ? "" : " ("+t.Special+")");
             case BleValueFormat.PulseOximeter:
                 var p=CosinussParsers.Plx(bytes,Encoding());
                 bool warning=(p.MeasurementStatus.GetValueOrDefault() & 0xFC00)!=0 || (p.DeviceStatus.GetValueOrDefault() & 0xFFFE)!=0;
+                value.PulseBpm = !warning && p.Pulse > 0 ? p.Pulse : double.NaN;
+                value.PerfusionPercent = !warning && p.Perfusion >= 0 ? p.Perfusion : double.NaN;
                 value.OxygenPercent=!warning && !double.IsNaN(p.Spo2) && !double.IsInfinity(p.Spo2) && p.Spo2>0 && p.Spo2<=100
                     ? p.Spo2 : double.NaN;
                 return (p.Spo2<0 || p.Spo2>100 ? "ungültiger Wertebereich" : Number(p.Spo2," %"))

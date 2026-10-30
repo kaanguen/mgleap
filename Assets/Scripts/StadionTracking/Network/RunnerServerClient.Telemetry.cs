@@ -57,23 +57,92 @@ namespace StadionTracking
                 ["speed"] = avatarBehaviour.PlaybackSpeed, ["elapsed"] = avatarBehaviour.ElapsedSeconds,
                 ["duration"] = avatarBehaviour.DurationSeconds };
             run["warmup"] = WarmupTelemetry();
-            var ble = FindFirstObjectByType<BleConnection>();
+            var ble = FindBleConnection();
             var pickups = world.GetComponent<TrackCollectibles>();
             run["collectibles"] = pickups == null ? null : new JObject {
                 ["source"] = pickups.SpawnSource.ToString(), ["fixedCount"] = pickups.FixedCount,
                 ["rowCount"] = pickups.CurrentRowCount, ["oxygenReady"] = pickups.OxygenReady,
                 ["oxygenPercent"] = pickups.OxygenPercent.HasValue ? new JValue(pickups.OxygenPercent.Value) : JValue.CreateNull(),
                 ["collected"] = pickups.CollectedCount };
-            var sensor = FindFirstObjectByType<SensorMeasurements>();
+            var sensor = FindBleMeasurements(ble);
             double oxygen = double.NaN;
             bool oxygenReady = sensor != null && sensor.TryGetOxygenPercent(out oxygen);
             var hudGroup = statsCanvas != null ? statsCanvas.GetComponent<CanvasGroup>() : null;
             Queue(new JObject { ["type"] = "telemetry", ["data"] = new JObject {
                 ["treadmill"] = run, ["runningMate"] = run.DeepClone(),
-                ["ble"] = new JObject { ["connected"] = ble != null && ble.Connected,
-                    ["spo2"] = oxygenReady ? new JValue(oxygen) : JValue.CreateNull() },
+                ["ble"] = BleTelemetry(ble, oxygenReady, oxygen, sensor),
                 ["huds"] = new JObject { ["stadium"] = statsCanvas != null && (hudGroup == null || hudGroup.alpha > 0) } } });
         }
 
+        private BleConnection FindBleConnection()
+        {
+            foreach (var candidate in FindObjectsByType<BleConnection>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+                if (candidate.gameObject.scene == gameObject.scene) return candidate;
+            return null;
+        }
+
+        private static void ActivateBleHierarchy(Transform node)
+        {
+            if (node.parent != null) ActivateBleHierarchy(node.parent);
+            if (!node.gameObject.activeSelf) node.gameObject.SetActive(true);
+        }
+
+        internal static void PrepareRemoteBle(BleConnection ble)
+        {
+            // The transport lives on the legacy sensor canvas. Keep that canvas out of
+            // panel arbitration while its data components run for dashboard commands.
+            var canvas = ble.GetComponentInParent<Canvas>(true);
+            if (canvas != null)
+            {
+                var panel = canvas.GetComponent<RunnerArPanel>();
+                if (panel != null) panel.enabled = false;
+                var localUi = canvas.GetComponent<HeartRateUI>();
+                if (localUi != null) localUi.enabled = false;
+                canvas.enabled = false;
+                var group = canvas.GetComponent<CanvasGroup>();
+                if (group != null) { group.alpha = 0; group.interactable = group.blocksRaycasts = false; }
+            }
+            ActivateBleHierarchy(ble.transform);
+            ble.enabled = true;
+            foreach (var measurements in FindObjectsByType<SensorMeasurements>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+                if (measurements.gameObject.scene == ble.gameObject.scene && measurements.bluetooth == ble)
+                { ActivateBleHierarchy(measurements.transform); measurements.enabled = true; }
+        }
+
+        private static SensorMeasurements FindBleMeasurements(BleConnection ble)
+        {
+            if (ble == null) return null;
+            foreach (var sensor in FindObjectsByType<SensorMeasurements>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+                if (sensor.gameObject.scene == ble.gameObject.scene && sensor.bluetooth == ble) return sensor;
+            return null;
+        }
+
+        private static JObject BleTelemetry(BleConnection ble, bool oxygenReady, double oxygen, SensorMeasurements sensor)
+        {
+            var devices = new JArray();
+            if (ble != null)
+                for (int i = 0; i < ble.DeviceIds.Count; i++)
+                    devices.Add(new JObject { ["id"] = ble.DeviceIds[i], ["name"] = ble.DeviceNames[i] });
+            var connectedDevices = new JArray();
+            if (ble != null && ble.Connected)
+                connectedDevices.Add(new JObject { ["id"] = ble.ConnectedDeviceId, ["name"] = ble.ConnectedDeviceName });
+            double hr = double.NaN, temperature = double.NaN, pulse = double.NaN, perfusion = double.NaN;
+            bool matching = sensor != null && sensor.bluetooth == ble && ble != null && ble.Connected;
+            return new JObject {
+                ["available"] = ble != null, ["connected"] = ble != null && ble.Connected,
+                ["scanning"] = ble != null && ble.Scanning, ["initializing"] = ble != null && ble.Initializing,
+                ["connecting"] = ble != null && ble.Busy, ["status"] = ble != null ? ble.Status : "Keine BLE-Komponente in der Szene.",
+                ["deviceId"] = ble != null ? ble.ConnectedDeviceId : null,
+                ["deviceName"] = ble != null ? ble.ConnectedDeviceName : null,
+                ["connectedDevices"] = connectedDevices,
+                ["selectedDeviceId"] = ble != null && ble.SelectedIndex >= 0 && ble.SelectedIndex < ble.DeviceIds.Count ? ble.DeviceIds[ble.SelectedIndex] : null,
+                ["devices"] = devices,
+                ["hr"] = matching && sensor.TryGetHeartRateBpm(out hr) ? new JValue(hr) : JValue.CreateNull(),
+                ["temperature"] = matching && sensor.TryGetTemperatureCelsius(out temperature) ? new JValue(temperature) : JValue.CreateNull(),
+                ["spo2"] = matching && oxygenReady ? new JValue(oxygen) : JValue.CreateNull(),
+                ["pr"] = matching && sensor.TryGetPulseBpm(out pulse) ? new JValue(pulse) : JValue.CreateNull(),
+                ["pi"] = matching && sensor.TryGetPerfusionPercent(out perfusion) ? new JValue(perfusion) : JValue.CreateNull()
+            };
+        }
     }
 }
