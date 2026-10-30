@@ -41,7 +41,7 @@ def main():
         (work / "Program.cs").write_text(
             "internal static class LogicCheckRunner\n{\n    public static void Main()\n    {\n"
             + calls + '\n        System.Console.WriteLine("PASS: all logic check suites.");\n    }\n}\n')
-        files = [sources / f"{name}.cs" for name in names] + checks + [work / "Program.cs"]
+        files = [next(sources.rglob(f"{name}.cs")) for name in names] + checks + [work / "Program.cs"]
         includes = "\n".join(f'    <Compile Include="{escape(str(p))}" />' for p in files)
         (work / "Checks.csproj").write_text(f'''<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>

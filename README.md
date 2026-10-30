@@ -87,10 +87,12 @@ Die direkten Paketabhängigkeiten stehen in [Packages/manifest.json](Packages/ma
 MarkerML2/
 ├── Assets/
 │   ├── Scripts/
-│   │   ├── MarkerAndAnchorTracker.cs   Marker, Planes und AR-Platzierung
-│   │   ├── Gestures.cs                Hand-Ray und Pinch-Bedienung
-│   │   ├── UIScript.cs                UI des älteren Marker-Läufers
-│   │   └── StadionTracking/           Laufwelt, Geometrie, Ghost, HUD, Server
+│   │   ├── Tracking/                 Marker, Planes und AR-Platzierung
+│   │   ├── Input/                    Hand-Ray und Pinch-Bedienung
+│   │   ├── UI/                       UI des älteren Marker-Läufers
+│   │   └── StadionTracking/           Unterordner: World, Tracking, Avatar,
+│   │                                 Ghost, Session, Network, UI, Collectibles;
+│   │                                 Resources enthält Shader und Karte
 │   ├── Editor/                        Szenenaufbau, Prüfungen, Build-Werkzeug
 │   ├── Scenes/                        Lauf-, Menü- und Beispielszenen
 │   ├── Resources/RunnerServer.json    Serveradresse im Build
