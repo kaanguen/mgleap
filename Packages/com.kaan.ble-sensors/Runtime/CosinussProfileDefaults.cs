@@ -7,7 +7,6 @@ public static class CosinussProfileDefaults
     {
         var p = ScriptableObject.CreateInstance<BleDeviceProfile>();
         p.name = "Cosinuss (Standardkanäle prüfen)";
-        p.nameContains = new[] { "tree", "thre" };
         Add(p,"model","Modell","180a","2a24",BleValueFormat.Text,true,false);
         Add(p,"firmware","Firmware","180a","2a26",BleValueFormat.Text,true,false);
         Add(p,"manufacturer","Hersteller","180a","2a29",BleValueFormat.Text,true,false);

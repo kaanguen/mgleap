@@ -1,6 +1,6 @@
 # MarkerML2 – AR-Lauftraining auf der Magic Leap 2
 
-Stand: 28.10.2026.
+Stand: 30.10.2026.
 
 MarkerML2 platziert eine virtuelle Laufbahn und einen animierten Laufpartner in der realen Umgebung. Ein AprilTag auf dem Boden und eine erkannte Bodenfläche bestimmen Position, Höhe und Ausrichtung. Die Bedienung erfolgt hauptsächlich über das Web-Dashboard des separaten RunningServer. In der Brille zeigt ein HUD Zeit, Distanz, Pace und Checkpoints.
 
@@ -44,7 +44,31 @@ adb reverse tcp:8081 tcp:8081
 
 Für USB in der Serverkonfiguration `ws://127.0.0.1:8081/ws` eintragen und danach MarkerML2 auf der Brille öffnen. Die Portweiterleitung verbindet diese Adresse auf der Brille mit dem Server auf dem Rechner. Nach einem Geräte-Neustart die Weiterleitung erneut einrichten.
 
-Für WLAN die erreichbare LAN-Adresse des Rechners in `Assets/Resources/RunnerServer.json` hinterlegen und die App neu bauen. Alternativ kann eine `runner-server.json` im geräteseitigen `Application.persistentDataPath` die Adresse überschreiben. Details stehen in [Docs/RunningServer.md](Docs/RunningServer.md).
+### Serveradresse nach einem WLAN- oder Netzwerkwechsel ändern
+
+Wenn sich die IP-Adresse des Serverrechners ändert, kann die Brille die bisherige Adresse nicht mehr erreichen. So wird die neue Adresse über den Unity Editor übernommen:
+
+1. Rechner und Magic Leap mit einem Netzwerk verbinden, in dem sie einander erreichen können. Den RunningServer auf dem Rechner starten.
+2. Das Projekt in Unity öffnen und gegebenenfalls den Play Mode beenden.
+3. **Tools → RunningServer → Serveradresse einstellen** öffnen.
+4. Unter **IP-Adressen dieses Rechners zum Übernehmen** die passende WLAN-/LAN-Adresse anklicken. Läuft der Server auf einem anderen Rechner, dessen IP im Feld **Serveradresse** eingeben. Eine IP allein genügt: Aus beispielsweise `192.168.1.50` wird `ws://192.168.1.50:8081/ws`. Bei mehreren angezeigten Adressen die des gemeinsamen Netzwerks wählen.
+5. **Build-Adresse beim App-Start bevorzugen** einschalten. Damit ignoriert die App beim Start eine alte, auf der Brille gespeicherte IP. Ohne diese Option hat die geräteseitige Datei `runner-server.json` weiterhin Vorrang.
+6. **Adresse für nächsten Build speichern** anklicken. Die Einstellung wird in `Assets/Resources/RunnerServer.json` gespeichert.
+7. Über **Tools → Treadmill → Build device verification APK** eine neue Android-App bauen. Der fertige Build liegt im Projekt unter `Build/TreadmillMenuFix.apk`.
+8. Die Brille per USB anschließen, USB-Debugging erlauben und den neuen Build installieren. Im Terminal aus dem Projektordner ausführen:
+
+   ```bash
+   adb devices
+   adb install -r Build/TreadmillMenuFix.apk
+   ```
+
+9. MarkerML2 auf der Brille neu starten. Im Serverdialog die neue Adresse prüfen und **VERBINDEN** wählen. Im Dashboard sollte anschließend die Headset-Verbindung erscheinen.
+
+**Speichern im Editor allein aktualisiert die bereits installierte App nicht.** Erst der neue Build enthält die geänderte Adresse und die gewählte Vorrangoption.
+
+Für einen vorübergehenden Wechsel kann die Adresse auch direkt im Serverdialog auf der Brille geändert werden, ohne neu zu bauen. Bei aktivierter Option **Build-Adresse beim App-Start bevorzugen** wird beim nächsten App-Start wieder die Adresse aus dem Build verwendet. Für USB lässt sich im Editor **USB-Adresse übernehmen** wählen; zusätzlich ist die oben beschriebene Portweiterleitung nötig.
+
+Falls die Verbindung weiterhin scheitert: Prüfen, ob der RunningServer läuft, die gewählte Rechner-IP noch aktuell ist und das Netzwerk beziehungsweise die Firewall Verbindungen auf Port `8081` zulässt. Details stehen in [Docs/RunningServer.md](Docs/RunningServer.md).
 
 ### Lauftraining beginnen
 
@@ -140,6 +164,7 @@ flowchart TD
     BLE[BleConnection und GATT] --> Measurements[SensorMeasurements]
     Measurements --> SensorUI[HeartRateUI]
     BLE -->|Verbindungsstatus| Client
+    Measurements -->|Numerische Vitalwerte| Client
 ```
 
 Die Architektur ist komponentenbasiert. Unity-`MonoBehaviour`-Komponenten verbinden Szene, Gerätefunktionen und Darstellung. Reine C#-Klassen übernehmen Geometrie, Geschwindigkeitswahl, Checkpoints und Ghost-Daten, sodass sich diese Logik auch ohne laufende Unity-Szene prüfen lässt.
@@ -261,7 +286,7 @@ Die Aufteilung des Codes und die erhaltenen Kompatibilitätspfade sind in [Docs/
 
 ## 6. Serversteuerung und Zustände
 
-Die eingebaute WLAN-Adresse steht in `Assets/Resources/RunnerServer.json`: aktuell `ws://192.168.178.120:8081/ws`. Eine Datei `runner-server.json` in `Application.persistentDataPath` kann sie überschreiben. Für USB dort `ws://127.0.0.1:8081/ws` verwenden; `adb reverse tcp:8081 tcp:8081` verbindet diese Brillenadresse mit dem Server auf dem Rechner. Bei einem Wechsel der WLAN-IP muss die Konfiguration angepasst werden.
+Die eingebaute WLAN-Adresse steht in `Assets/Resources/RunnerServer.json` und lässt sich unter **Tools → RunningServer → Serveradresse einstellen** bearbeiten. Eine Datei `runner-server.json` in `Application.persistentDataPath` hat nur Vorrang, wenn **Build-Adresse beim App-Start bevorzugen** ausgeschaltet ist. Für USB dort `ws://127.0.0.1:8081/ws` verwenden; `adb reverse tcp:8081 tcp:8081` verbindet diese Brillenadresse mit dem Server auf dem Rechner. Bei einem Wechsel der WLAN-IP muss die Konfiguration angepasst werden.
 
 Nach dem Verbindungsaufbau sendet Unity `hello` mit Rolle `headset` und anschließend eine `registry` mit unterstützten Befehlen. Das Dashboard darf nur auf tatsächlich gemeldete Fähigkeiten vertrauen.
 
@@ -279,7 +304,7 @@ Nach dem Verbindungsaufbau sendet Unity `hello` mit Rolle `headset` und anschlie
 | `avatar.configurePlacement`, `avatar.reposition` | Relative SideBySide-Platzierung beziehungsweise Rückkehr zum Markeranker auf der Boden-Plane |
 | `scene.setRunningMatePathVisible` | Bahn ein-/ausblenden |
 | `scene.setRunningMateHudVisible`, `scene.setHudVisible` | HUD ein-/ausblenden |
-| `sensor.connect`, `sensor.disconnect` | Vorhandene BLE-Verbindung bedienen; kein neuer Scan durch diese Befehle |
+| `sensor.startScan`, `sensor.stopScan`, `sensor.connect`, `sensor.disconnect` | Alle BLE-Geräte über das Dashboard suchen, per Kennung auswählen, verbinden und trennen |
 
 Kompatibilitätswege für Körperhöhe und manuelle Höhenkorrektur bleiben im Code, gehören aber nicht zum aktuellen Dashboard-Ablauf. Die genaue Payload-Struktur steht in [Docs/RunningServer.md](Docs/RunningServer.md).
 
@@ -321,7 +346,7 @@ HeartRateUI → BleConnection → Velorexe / AndroidBleGattBackend
 
 `Editor/BleProfileMenu.cs` stellt den Menüpunkt **Assets → Create → BLE → Cosinuss-Standardprofil** bereit. `Runtime/Plugins/Android/cosinuss-gatt.jar` enthält die native Companion-Brücke. Das Android-Manifest und seine BLE-Berechtigungen sind für den Gerätebetrieb erforderlich.
 
-Das Paket kann Sensordaten lokal auswerten. Die RunningServer-Brücke überträgt den BLE-Verbindungsstatus und frische, gültige SpO₂-Werte. Unter **Laufband → Sammelkugeln** steuert wahlweise der Sauerstoffsensor die Kugelmenge oder eine feste Eingabe von 0–30 Kugeln pro Reihe ohne Sensor. Sensorwahl öffnet den bestehenden Sensor-Dialog auf der Brille; dort scannen und verbinden. Höhere SpO₂-Werte erzeugen mehr Kugeln; ohne gültige Daten pausiert die Kugelerzeugung im Sensormodus. Details zur Spielzuordnung und zum Protokoll stehen in [Docs/RunningServer.md](Docs/RunningServer.md#schwebende-sammelkugeln-und-sauerstoffsensor). **Die BLE-Sensoranbindung ist keine fertige Laufbandgeschwindigkeits-Anbindung.** Ein zukünftiger Adapter muss `ReportTreadmillSpeedKmh(...)` auf dem Unity-Hauptthread aufrufen und bei Signalverlust `ClearTreadmillSignal()` melden.
+Das Paket kann Sensordaten lokal auswerten. Die RunningServer-Brücke überträgt das verbundene Gerät mit Name/Kennung sowie frische, gültige Werte für Herzfrequenz, Temperatur in °C, SpO₂, Puls und Perfusionsindex. Unter **Sensoren & Session** werden die aktuelle Verbindung und die Messwerte angezeigt. Fehlende, ungültige oder abgelaufene Werte erscheinen als **—**. Die App verbindet derzeit ein BLE-Gerät gleichzeitig; mehrere Messkanäle dieses Geräts sind möglich. Unter **Laufband → Sammelkugeln** steuert wahlweise der Sauerstoffsensor die Kugelmenge oder eine feste Eingabe von 0–30 Kugeln pro Reihe ohne Sensor. Sensorwahl öffnet den bestehenden Sensor-Dialog auf der Brille; alternativ unter **Sensoren & Session** im RunningServer suchen und verbinden. Höhere SpO₂-Werte erzeugen mehr Kugeln; ohne gültige Daten pausiert die Kugelerzeugung im Sensormodus. Details zur Spielzuordnung und zum Protokoll stehen in [Docs/RunningServer.md](Docs/RunningServer.md#schwebende-sammelkugeln-und-sauerstoffsensor). **Die BLE-Sensoranbindung ist keine fertige Laufbandgeschwindigkeits-Anbindung.** Ein zukünftiger Adapter muss `ReportTreadmillSpeedKmh(...)` auf dem Unity-Hauptthread aufrufen und bei Signalverlust `ClearTreadmillSignal()` melden.
 
 Details und Einschränkungen stehen in [Packages/com.kaan.ble-sensors/README.md](Packages/com.kaan.ble-sensors/README.md).
 

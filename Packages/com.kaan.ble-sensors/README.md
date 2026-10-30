@@ -16,7 +16,7 @@ com.kaan.ble-sensors/
   Runtime/
     Kaan.BleSensors.Runtime.asmdef    Eigene Runtime-Assembly
     BleConnection.cs                 Allgemeine BLE-Verbindung
-    BleDeviceProfile.cs              Filter und Kanaldefinitionen
+    BleDeviceProfile.cs              Kanaldefinitionen und ältere Filterfelder
     BleGattQueue.cs                  Serielle GATT-Aufträge
     AndroidBleGattBackend.cs         Verbindung zum nativen JAR
     SensorMeasurements.cs           Auswertung der Profilkanäle
@@ -46,7 +46,7 @@ https://github.com/Velorexe/Unity-Android-Bluetooth-Low-Energy.git#55d8c12e155cc
 
 3. Anschließend **+ → Add package from tarball** wählen und `com.kaan.ble-sensors-1.0.0.tgz` auswählen. Alternativ das Package in einen dauerhaften Ordner entpacken, **Add package from disk** wählen und dessen `package.json` öffnen. Eine Verknüpfung vom Datenträger hängt von diesem Ordner ab; ihn danach nicht verschieben.
 4. Unity löst TextMeshPro 3.0.7, uGUI 1.0.0 und Android-JNI über die Paketabhängigkeiten auf. Das Git-Plugin muss zuerst hinzugefügt werden: Die Paketabhängigkeit kann seine Git-URL nicht automatisch bereitstellen.
-5. **Assets → Create → BLE → Cosinuss-Standardprofil** wählen und das Profil im Assets-Ordner speichern. Für andere Geräte **Create → BLE → Geräteprofil** verwenden. Namenfilter und UUIDs im Inspector einstellen.
+5. **Assets → Create → BLE → Cosinuss-Standardprofil** wählen und das Profil im Assets-Ordner speichern. Für andere Geräte **Create → BLE → Geräteprofil** verwenden. Datenkanäle und UUIDs im Inspector einstellen. Die Gerätesuche zeigt alle gefundenen BLE-Geräte; gespeicherte Namens-/Kennungsfilter beschränken die Liste nicht mehr.
 6. Auf einem eigenen GameObject **BleConnection** und **SensorMeasurements** hinzufügen. Das Profil bei BleConnection zuweisen, den Verbindungsbaustein bei SensorMeasurements im Feld Bluetooth zuweisen.
 7. Für die mitgelieferte UI-Anbindung eine uGUI-Oberfläche mit vier Buttons, TMP-Dropdown und TMP-Texten verwenden. HeartRateUI hinzufügen: Bluetooth → BleConnection; Sensor → SensorMeasurements; Devices → Dropdown; Status Text → Statusanzeige; Heart Rate Text → Hauptmesswert; Sensor Details Text → Zusatzwerte; die vier Button-Felder → Scan/Stop/Connect/Disconnect. TMP Essential Resources bei Aufforderung importieren.
 8. Die BLE-Einträge aus `Documentation~/AndroidManifest-BLE.xml` mit dem eigenen Android-Manifest zusammenführen. Nicht das gesamte vorhandene Manifest ersetzen. Die Laufzeitabfragen erfolgen im Code.
@@ -70,3 +70,13 @@ Ein Geräteprofil garantiert keine Unterstützung beliebiger Geräteprotokolle. 
 - Kein neuer Hardwaretest und kein frischer Android-Build allein durch diese Paketmigration.
 
 [Unity: Eigene Packages erstellen](https://docs.unity3d.com/2022.3/Documentation/Manual/CustomPackages.html)
+
+## Fernbedienung über RunningServer
+
+Unter **Sensoren & Session** im Dashboard suchen, ein Gerät anhand von Name/Kennung auswählen und verbinden oder trennen. Die Magic Leap führt den Scan und die Verbindung aus; einmalige Android-Berechtigungen bleiben auf der Brille. Das Profil beschreibt weiterhin die auslesbaren Datenkanäle, nicht die Suchliste. Geräte ohne passende Kanäle können verbunden sein, ohne interpretierbare Messwerte zu liefern.
+
+Die Fernsuche aktiviert nur Transport und Messwertauswertung im Hintergrund. Das alte Sensorfenster bleibt unsichtbar und verdrängt das Lauf-HUD nicht. Nach der Plugin-Initialisierung wartet die Suche auf die aktive Brillen-App, damit ein kurzer Android-Berechtigungsdialog den Scan nicht sofort beendet. Vor jedem Scan wird die native Geräteliste geleert, damit auch bereits zuvor gefundene Geräte erneut gemeldet werden.
+
+Wenn die Suche nicht starten kann, meldet die App ausgeschaltetes Bluetooth beziehungsweise auf Android bis Version 11 deaktivierte Standortdienste ausdrücklich. Eine leere abgeschlossene Suche bedeutet, dass keine BLE-Werbesignale empfangen wurden; sie ist keine Liste sämtlicher Bluetooth-Classic-Geräte oder bereits gekoppelter Geräte.
+
+Herzfrequenz, Temperatur in Celsius, SpO₂, Puls und Perfusionsindex stehen als numerische Getter für Telemetrie bereit. Es werden nur gültige, gemäß Profil aktuelle Werte einer aktiven Verbindung geliefert. Das Dashboard zeigt das verbundene Gerät separat von der Suchliste an; fehlende oder veraltete Werte bleiben leer.

@@ -6,13 +6,14 @@ namespace StadionTracking
 {
     /// <summary>Shared address validation and device-local server configuration.</summary>
     [Serializable]
-    internal sealed class RunnerServerConfiguration
+    public sealed class RunnerServerConfiguration
     {
         private const int DefaultPort = 8081;
         private const string DefaultUrl = "ws://127.0.0.1:8081/ws";
         private const string ResourceName = "RunnerServer";
         private const string OverrideFileName = "runner-server.json";
         public string serverUrl = DefaultUrl;
+        public bool preferBundledAddress;
         private static string OverridePath => Path.Combine(Application.persistentDataPath, OverrideFileName);
 
         internal static string Load(out string error)
@@ -22,8 +23,11 @@ namespace StadionTracking
             try
             {
                 var bundled = Resources.Load<TextAsset>(ResourceName);
-                if (bundled != null) url = ReadAddress(bundled.text);
-                if (File.Exists(OverridePath)) url = ReadAddress(File.ReadAllText(OverridePath));
+                var config = bundled != null ? JsonUtility.FromJson<RunnerServerConfiguration>(bundled.text) : new RunnerServerConfiguration();
+                if (config == null || !TryNormalizeAddress(config.serverUrl, out var bundledUri))
+                    throw new InvalidDataException("Ungültige Serveradresse im Build.");
+                url = bundledUri.AbsoluteUri;
+                if (!config.preferBundledAddress && File.Exists(OverridePath)) url = ReadAddress(File.ReadAllText(OverridePath));
             }
             catch (Exception e) { error = "Gespeicherte Adresse konnte nicht geladen werden: " + e.Message; }
             return url;
@@ -40,7 +44,7 @@ namespace StadionTracking
         internal static void Save(Uri uri) => File.WriteAllText(OverridePath,
             JsonUtility.ToJson(new RunnerServerConfiguration { serverUrl = uri.AbsoluteUri }, true));
 
-        internal static bool TryNormalizeAddress(string value, out Uri uri)
+        public static bool TryNormalizeAddress(string value, out Uri uri)
         {
             uri = null;
             value = (value ?? "").Trim();
